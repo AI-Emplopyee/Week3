@@ -55,6 +55,14 @@ export type SampleReviewInventory = {
 export type SampleReviewVariant = {
   id: string; label: string; model: string; scope: string; sampleCount: number;
   metrics: SampleReviewMetrics; samples: SampleReviewSample[];
+  stage?: 'automatic_mapping' | 'review_assisted';
+  reviewAssisted?: boolean;
+  scoreMethod?: 'frozen_pair_bound_review' | 'posthoc_pair_bound_review';
+  limitations?: string[];
+  processingSummary?: {
+    newProviderCalls: number; fullEnvelopeFailures: number;
+    fullyAcceptedEnvelopes: number; reviewedSourceEdits: number;
+  };
 };
 export type SampleReviewData = {
   schemaVersion: 1; generatedAt: string; scopeNotes: string[];

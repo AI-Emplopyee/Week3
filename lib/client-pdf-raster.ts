@@ -4,7 +4,7 @@ import type { PdfRaster } from './pdf-raster.ts';
 type RasterReply = { id: number; pageCount?: number; raster?: PdfRaster; error?: string };
 type RasterRequest = { type: 'open'; bytes: ArrayBuffer; wasmUrl: string } | { type: 'render'; page: number };
 
-/** The self-hosted renderer returns pixels for preview or Kimi, never extracted PDF text. */
+/** The self-hosted renderer returns pixels for preview or AI reading, never extracted PDF text. */
 export async function openPdfRasterizer(bytes: ArrayBuffer, signal?: AbortSignal, dependencies: { worker?: () => Worker; maxPages?: number } = {}): Promise<{ pageCount: number; render: (page: number) => Promise<PdfRaster>; close: () => void }> {
   throwIfAborted(signal);
   const maxPages = dependencies.maxPages ?? 50;

@@ -14,7 +14,7 @@ export async function saveAiResult(db: D1Database, workspaceId: string, actor: A
     const state = initializeDeclarationDrafts(stored);
     const current = state.documents.find(document => document.id === source.id && document.active);
     const shipment = state.cases.find(shipment => shipment.id === current?.caseId && !shipment.mergedInto);
-    if (!current || current.version !== source.version || current.sha256 !== source.sha256 || current.referenceOnly || !shipment || shipment.status === 'completed') throw new AiCommitError(409, 'The source document or shipment changed while Kimi was reading. Its outdated result was not saved.');
+    if (!current || current.version !== source.version || current.sha256 !== source.sha256 || current.referenceOnly || !shipment || shipment.status === 'completed') throw new AiCommitError(409, 'The source document or shipment changed while AI was reading. Its outdated result was not saved.');
     // The prompt reads this original only. Regrouping during another page read
     // can move the unchanged source; attach its evidence to its current open case.
     const next = applyAction(state, { ...action, caseId: current.caseId }, actor);

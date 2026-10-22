@@ -11,7 +11,7 @@ export type AiPromptsResponse = {
   prompts: AiPrompt[];
 };
 
-/** Read the very same instructions used by the live requests, without source files or credentials. */
+/** Read the live instruction templates only; provider credentials, source payloads and employee answer keys stay out of this response. */
 export function currentAiPrompts(): AiPrompt[] {
   return [
     { id: 'extraction', role: 'system', text: kimiExtractionPrompt() },

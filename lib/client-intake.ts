@@ -5,7 +5,7 @@ export const MAX_FILE_BYTES = 20 * 1024 * 1024;
 export const MAX_PAGES = 50;
 type PreparedFile = { pages: SourcePage[]; extractionStatus: ShipmentDocument['extractionStatus']; extractionError?: string };
 
-/** Preserve originals for Kimi. No PDF text reader, OCR, or fallback runs locally. */
+/** Preserve originals for the configured AI reader. No PDF text reader, OCR, or fallback runs locally. */
 export async function prepareFile(file: File, options: IntakeOptions = {}): Promise<PreparedFile> {
   throwIfAborted(options.signal);
   if (file.size > MAX_FILE_BYTES) throw new Error('Tệp vượt quá giới hạn 20 MB.');
@@ -29,7 +29,7 @@ export type PreparedIntakeFile = PreparedFile & {
   attachments?: (PreparedFile & { name: string; index: number })[];
 };
 
-/** Attachments use the same Kimi-only intake as directly uploaded documents. */
+/** Attachments use the same original-only intake as directly uploaded documents. */
 export async function prepareIntakeFile(file: File, options: IntakeOptions = {}): Promise<PreparedIntakeFile> {
   if (!file.name.toLowerCase().endsWith('.eml')) return prepareFile(file, options);
   if (file.size > MAX_FILE_BYTES) throw new Error('Tệp vượt quá giới hạn 20 MB.');

@@ -178,8 +178,8 @@ export function SourceFields({
                     {automaticallyApplied && (
                       <span className="field-autofilled-label">
                         {locale === "vi"
-                          ? "Kimi · Đã tự điền"
-                          : "Kimi · Autofilled"}
+                          ? "AI · Đã tự điền"
+                          : "AI · Autofilled"}
                       </span>
                     )}
                     {reviewed?.stale ? (
@@ -270,8 +270,8 @@ export function SourceFields({
                       </summary>
                       <p className="muted">
                         {locale === "vi"
-                          ? "Chỉ giữ để đối chiếu. Kimi cần đọc bản gốc trước khi các giá trị này có thể được dùng làm đề xuất hiện tại."
-                          : "Retained for reference. Kimi must read the original before these values can become current suggestions."}
+                          ? "Chỉ giữ để đối chiếu. AI cần đọc bản gốc trước khi các giá trị này có thể được dùng làm đề xuất hiện tại."
+                          : "Retained for reference. AI must read the original before these values can become current suggestions."}
                       </p>
                       {historicalCandidates.map((candidate) => (
                         <div className="candidate" key={candidate.id}>

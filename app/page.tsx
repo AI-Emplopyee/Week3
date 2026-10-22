@@ -44,7 +44,7 @@ import {
   Ship,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { AuditList } from "@/components/workspace/audit-list";
 import { ModalShell } from "@/components/workspace/modal-shell";
@@ -94,6 +94,12 @@ export default function WorkspaceApp() {
   );
 }
 
+function subscribeLocationChange(listener: () => void) {
+  window.addEventListener('popstate', listener);
+  return () => window.removeEventListener('popstate', listener);
+}
+const sampleViewRequested = () => new URLSearchParams(window.location.search).get('view') === 'samples';
+
 function Workspace() {
   const { locale, t, date } = useLocale();
   const { status: authStatus } = useAuthStatus();
@@ -117,8 +123,9 @@ function Workspace() {
     refreshConflict,
   } = useWorkspaceSession();
   const pendingFieldSaves = useRef(new Map<string, string>());
-  const [view, setView] = useState<WorkspaceView>("shipments");
-  useEffect(()=>{if(localMode && new URLSearchParams(window.location.search).get('view')==='samples') setView('samples');},[localMode]);
+  const [chosenView, setView] = useState<WorkspaceView | null>(null);
+  const requestedSamples = useSyncExternalStore(subscribeLocationChange, sampleViewRequested, () => false);
+  const view: WorkspaceView = chosenView ?? (localMode && requestedSamples ? 'samples' : 'shipments');
   const [shipmentQuery, setShipmentQuery] = useState("");
   const [shipmentFilter, setShipmentFilter] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -219,7 +226,7 @@ function Workspace() {
           throw new DOMException("Đã hủy tiếp nhận.", "AbortError");
         metadata.push({ name: file.name, ...prepared });
       }
-      // Preserve the complete batch before Kimi reads the saved originals.
+      // Preserve the complete batch before AI reads the saved originals.
       // Shipment grouping is reconsidered as source-backed facts arrive.
       setExtractionCancelable(false);
       currentFile = "";
@@ -263,14 +270,14 @@ function Workspace() {
         throw new Error(body.error || t("Không thể tiếp nhận lô chứng từ."));
       install(body);
       committed = true;
-      // Kimi reads the saved originals in small batches. A later failure never
+      // AI reads the saved originals in small batches. A later failure never
       // loses uploaded files or results from completed pages.
       const visualDocuments = body.state.documents.filter(document => document.active && !document.referenceOnly && canRenderVisionDocument(document) && !existingDocuments.has(`${document.id}:${document.version}`));
       if (visualDocuments.length) {
         const statusResponse = await fetchWithSession("/api/ai/status");
         const status = await statusResponse.json() as ClientAiStatus & { error?: string };
-        if (!statusResponse.ok) throw new Error(status.error || t("Không thể kiểm tra kết nối Kimi."));
-        if (status.configured && status.visionSupported === false) throw new Error(t("Quản trị viên cần chọn mô hình Kimi hỗ trợ đọc ảnh."));
+        if (!statusResponse.ok) throw new Error(status.error || t("Không thể kiểm tra kết nối AI."));
+        if (status.configured && status.visionSupported === false) throw new Error(t("Quản trị viên cần chọn mô hình AI hỗ trợ đọc ảnh."));
         if (status.configured && !status.backgroundProcessing) {
           setExtractionCancelable(true);
           let workspace = body;
@@ -310,7 +317,7 @@ function Workspace() {
           currentFile = "";
           if (skipped.length) setError(`${t("Một số chứng từ cần kiểm tra trước khi đọc bằng AI. Bản gốc vẫn được lưu.")} ${skipped.join(" · ")}`);
         } else if (!status.configured) {
-          setError(t("Chứng từ đã được lưu và đang chờ Kimi. Quản trị viên cần cấu hình Kimi trên máy chủ để trích xuất dữ liệu."));
+          setError(t("Chứng từ đã được lưu và đang chờ AI. Quản trị viên cần cấu hình AI trên máy chủ để trích xuất dữ liệu."));
         }
       }
       setToast(
@@ -589,16 +596,16 @@ function Workspace() {
         if (!pending) return;
         const response = await fetchWithSession('/api/ai/status');
         const status = await response.json() as ClientAiStatus & { error?: string };
-        if (!response.ok) throw new Error(status.error || 'Kimi status could not be loaded.');
+        if (!response.ok) throw new Error(status.error || 'AI status could not be loaded.');
         if (!status.configured) {
-          setError(locale === 'vi' ? 'Bản gốc đang chờ Kimi. Cần cấu hình khóa Kimi trên máy chủ để ứng dụng tự đọc và điền biểu mẫu.' : 'Originals are waiting for Kimi. Configure the server Kimi key to read and fill the forms automatically.');
+          setError(locale === 'vi' ? 'Bản gốc đang chờ AI. Cần cấu hình khóa AI trên máy chủ để ứng dụng tự đọc và điền biểu mẫu.' : 'Originals are waiting for AI. Configure the server AI key to read and fill the forms automatically.');
           return;
         }
         if (status.backgroundProcessing) return;
         setExtractionCancelable(true);
         await runCaseKimi({ workspace: refreshed, caseId, status, signal: controller.signal,
           onWorkspace: response => { install(response); setError(""); },
-          onProgress: progress => setUploadLabel(`${progress.stage === 'rendering' ? (locale === 'vi' ? 'Chuẩn bị ảnh trang' : 'Preparing page image') : (locale === 'vi' ? 'Kimi đang đọc' : 'Kimi is reading')} · ${progress.documentName} · ${progress.page}`),
+          onProgress: progress => setUploadLabel(`${progress.stage === 'rendering' ? (locale === 'vi' ? 'Chuẩn bị ảnh trang' : 'Preparing page image') : (locale === 'vi' ? 'AI đang đọc' : 'AI is reading')} · ${progress.documentName} · ${progress.page}`),
         });
       } catch (error) {
         if (error instanceof AiPipelineError && error.workspace) install(error.workspace);
@@ -763,7 +770,7 @@ function Workspace() {
             {extractionCancelable && (
               <p>
                 {t(
-                  "Giữ trang này mở để Kimi đọc chứng từ. Kết quả từng nhóm trang được lưu tự động.",
+                  "Giữ trang này mở để AI đọc chứng từ. Kết quả từng nhóm trang được lưu tự động.",
                 )}
               </p>
             )}
@@ -904,7 +911,7 @@ function Workspace() {
                     : current.status === "completed"
                     ? t("Hồ sơ đã được lưu trữ")
                     : unreadOriginals
-                      ? (locale === 'vi' ? 'Kimi đang chuẩn bị dữ liệu từ bản gốc' : 'Kimi original-document processing')
+                      ? (locale === 'vi' ? 'AI đang chuẩn bị dữ liệu từ bản gốc' : 'AI original-document processing')
                     : automaticDraft && !automaticDraft.approval
                       ? (locale === 'vi' ? 'Email bổ sung thông tin đang chờ bạn duyệt' : 'Information-request email awaiting your approval')
                     : caseIssues.length
@@ -923,7 +930,7 @@ function Workspace() {
                     : current.status === "completed"
                     ? t("Mở lại hồ sơ khi cần sửa đổi hoặc bổ sung.")
                     : unreadOriginals
-                      ? (locale === 'vi' ? 'Ứng dụng đọc các trang bằng Kimi, áp dụng hướng dẫn và điền biểu mẫu trước khi hỏi thông tin còn thiếu.' : 'The app reads pages with Kimi, applies the guide and fills the forms before requesting missing information.')
+                      ? (locale === 'vi' ? 'Ứng dụng đọc các trang bằng AI, áp dụng hướng dẫn và điền biểu mẫu trước khi hỏi thông tin còn thiếu.' : 'The app reads pages with AI, applies the guide and fills the forms before requesting missing information.')
                     : automaticDraft && !automaticDraft.approval
                       ? (locale === 'vi' ? `Đã tổng hợp ${automaticDraft.automation?.questionCount || 0} thông tin cần bổ sung trong mục Tin nhắn. Email chưa được gửi.` : `${automaticDraft.automation?.questionCount || 0} outstanding details are grouped in Messages. The email has not been sent.`)
                     : caseIssues.length

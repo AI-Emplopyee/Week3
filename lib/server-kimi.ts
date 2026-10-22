@@ -1,3 +1,4 @@
+import { documentAiConfiguration } from '@/lib/ai-provider';
 import { env } from 'cloudflare:workers';
 import { z } from 'zod';
 import { consumeRateLimit } from '@/lib/auth-persistence';
@@ -11,7 +12,7 @@ import { isVisualDocument } from '@/lib/vision';
 import { automaticDocuments, automaticPageNeedsKimi, claimAiJob, finishAiJob, JOB_IDENTITY, jobIdentity, type AiJob } from '@/lib/ai-processing-queue';
 import { AiCommitError, saveAiResult } from '@/lib/ai-result-persistence';
 
-function configuration() { return { apiKey: env.MOONSHOT_API_KEY, model: env.MOONSHOT_MODEL }; }
+function configuration() { return documentAiConfiguration(env); }
 export async function getKimiStatus(request: Request) {
   const context = await workspace(request);
   const backgroundProcessing = runtimeAuthMode() === 'local' && ['0', '1'].includes(env.AICD_BACKGROUND_PROCESSING ?? '');
@@ -58,7 +59,7 @@ export async function requestKimiExtraction(request: Request) {
   let firstPage = 0;
   try {
     const config = configuration();
-    if (!kimiStatus(config).configured) throw new KimiError(503, 'Kimi requires server-side MOONSHOT_API_KEY and MOONSHOT_MODEL configuration.');
+    if (!kimiStatus(config).configured) throw new KimiError(503, 'Configure GLM-5.3-Flash with the server-side ZAI_API_KEY.');
     const references = input.visionPages ?? [];
     if (new Set(references.map(image => image.page)).size !== references.length) throw new ApiError(400, 'Use distinct source page images.');
     const pages = selectKimiPages(document, input.pages, references.map(image => image.page));
@@ -68,7 +69,7 @@ export async function requestKimiExtraction(request: Request) {
     firstPage = pages[0].page;
     lease = await claimAiJob(context.db, context.state.id, document, firstPage, !input.automatic);
     if (!lease) throw new ApiError(423, 'This source is already being processed, or the two background workers are occupied.');
-    if (!await consumeRateLimit(context.db, `kimi-extract:${context.state.id}`, KIMI_LIMITS.requestsPerMinute, 60)) throw new ApiError(429, 'This workspace has reached the Kimi request limit. The automatic queue will resume after one minute.');
+    if (!await consumeRateLimit(context.db, `kimi-extract:${context.state.id}`, KIMI_LIMITS.requestsPerMinute, 60)) throw new ApiError(429, 'This workspace has reached the AI request limit. The automatic queue will resume after one minute.');
     const result = await extractWithKimi(config, document, pages.map(page => page.page), { images, beforeRepair: () => consumeRateLimit(context.db, `kimi-extract:${context.state.id}`, KIMI_LIMITS.requestsPerMinute, 60) });
     // An expired/replaced reader cannot commit after a newer worker owns this page.
     const stillOwned = await context.db.prepare(`UPDATE ai_processing_jobs SET lease_until = ? WHERE ${JOB_IDENTITY} AND lease_token = ? AND state = 'running' AND lease_until > ? RETURNING lease_token`)

@@ -8,7 +8,7 @@ import type { IncomingMessage } from 'node:http';
 import { AuthError, authMode } from '../lib/auth-provider.ts';
 import { assertLocalRequest, isLoopbackAddress, localActor, LOCAL_ACTOR, LOCAL_REQUEST_HEADER } from '../lib/local-auth.ts';
 import { authorizeLocalIncoming } from '../build/local-vite-plugin.ts';
-import { assertLocalDevelopment, localPort, prepareLocalFiles, LOCAL_DATABASE_ID } from '../scripts/local-config.mjs';
+import { assertLocalDevelopment, localPort, localViteEnvironment, prepareLocalFiles, LOCAL_DATABASE_ID } from '../scripts/local-config.mjs';
 import { prepareLocalLaunch } from '../scripts/local-instance.mjs';
 
 const token = 'a'.repeat(64);
@@ -108,7 +108,7 @@ test('an occupied port cannot rotate or rewrite local configuration', async () =
     assert.equal(readFileSync(first.secrets, 'utf8'), secrets);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
-test('administrator Kimi environment overrides stay in private local Worker secrets', () => {
+test('administrator provider environment overrides stay in private local Worker secrets', () => {
   const root = mkdtempSync(join(tmpdir(), 'aicd-local-provider-test-'));
   try {
     const first = prepareLocalFiles(root);
@@ -129,14 +129,46 @@ test('administrator Kimi environment overrides stay in private local Worker secr
     assert.equal(parseEnv(readFileSync(disabled.secrets, 'utf8')).MOONSHOT_API_KEY, undefined);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
-test('invalid Kimi configuration fails without printing the value or overwriting saved secrets', () => {
+test('GLM credentials stay private and use GLM-5.3-Flash by default', () => {
+  const root = mkdtempSync(join(tmpdir(), 'aicd-local-glm-test-'));
+  try {
+    const first = prepareLocalFiles(root, { ZAI_API_KEY: 'synthetic-zai-key', ZAI_BASE_URL: 'https://untrusted.example', VITE_ZAI_API_KEY: 'must-not-load' });
+    const values = parseEnv(readFileSync(first.secrets, 'utf8'));
+    const config = JSON.parse(readFileSync(first.config, 'utf8'));
+    assert.equal(values.ZAI_API_KEY, 'synthetic-zai-key');
+    assert.equal(values.ZAI_MODEL, 'glm-5.3-flash');
+    assert.deepEqual(Object.keys(values).sort(), ['AICD_LOCAL_REQUEST_TOKEN', 'ZAI_API_KEY', 'ZAI_MODEL']);
+    assert.doesNotMatch(readFileSync(first.config, 'utf8'), /synthetic-zai-key|untrusted|must-not-load/);
+    assert.deepEqual(config.secrets.required, ['AICD_LOCAL_REQUEST_TOKEN', 'ZAI_API_KEY', 'ZAI_MODEL']);
+    assert.equal(statSync(first.secrets).mode & 0o777, 0o600);
+    const next = prepareLocalFiles(root);
+    assert.equal(parseEnv(readFileSync(next.secrets, 'utf8')).ZAI_API_KEY, 'synthetic-zai-key');
+    const overridden = prepareLocalFiles(root, { ZAI_API_KEY: 'synthetic-replacement', ZAI_MODEL: 'glm-5.3-flash' });
+    assert.equal(parseEnv(readFileSync(overridden.secrets, 'utf8')).ZAI_API_KEY, 'synthetic-replacement');
+    const disabled = prepareLocalFiles(root, { ZAI_API_KEY: '' });
+    assert.equal(parseEnv(readFileSync(disabled.secrets, 'utf8')).ZAI_API_KEY, undefined);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+test('Vite cannot inherit private model credentials, including public-prefixed variants', () => {
+  const environment = {
+    ZAI_API_KEY: 'private-zai', ZAI_MODEL: 'glm-5.3-flash', ZAI_BASE_URL: 'private-endpoint',
+    MOONSHOT_API_KEY: 'private-moonshot', SUPABASE_ANON_KEY: 'private-supabase',
+    VITE_ZAI_API_KEY: 'public-prefixed-zai', NEXT_PUBLIC_ZAI_API_KEY: 'other-prefixed-zai',
+    VITE_MOONSHOT_API_KEY: 'public-prefixed-moonshot', VITE_SUPABASE_ANON_KEY: 'public-prefixed-supabase',
+    AICD_AUTH_MODE: 'sites', AICD_OWNER_EMAIL: 'owner@example.test', AICD_STANDALONE: '1',
+    AICD_LOCAL: '1', AICD_LOCAL_REQUEST_TOKEN: token, PATH: '/synthetic/bin',
+  };
+  assert.deepEqual(localViteEnvironment(environment), { AICD_LOCAL: '1', AICD_LOCAL_REQUEST_TOKEN: token, PATH: '/synthetic/bin' });
+  assert.equal(environment.ZAI_API_KEY, 'private-zai');
+});
+test('invalid provider configuration fails without printing the value or overwriting saved secrets', () => {
   const root = mkdtempSync(join(tmpdir(), 'aicd-local-invalid-provider-test-'));
   try {
     const first = prepareLocalFiles(root);
     const saved = readFileSync(first.secrets, 'utf8');
-    for (const value of ['private-test-key\nINJECTED=1', 'private-test-key"', 'private-test-key\\', 'x'.repeat(8193)]) {
-      assert.throws(() => prepareLocalFiles(root, { MOONSHOT_API_KEY: value }), error => {
-        assert.equal((error as Error).message, 'Invalid MOONSHOT_API_KEY in local Kimi configuration.');
+    for (const key of ['MOONSHOT_API_KEY', 'ZAI_API_KEY', 'ZAI_MODEL']) for (const value of ['private-test-key\nINJECTED=1', 'private-test-key"', 'private-test-key\\', 'x'.repeat(8193)]) {
+      assert.throws(() => prepareLocalFiles(root, { [key]: value }), error => {
+        assert.equal((error as Error).message, `Invalid ${key} in local AI configuration.`);
         return true;
       });
       assert.equal(readFileSync(first.secrets, 'utf8'), saved);

@@ -9,7 +9,7 @@ root = Path(__file__).resolve().parents[1]
 files = subprocess.check_output(['git', 'ls-files', '-z', '--cached', '--others', '--exclude-standard'], cwd=root).decode().split('\0')
 output = root / 'outputs' / 'AICD-source.zip'
 output.parent.mkdir(exist_ok=True)
-blocked = {'.git', 'node_modules', 'dist', '.next', '.vinext', 'outputs', '.wrangler', '.aicd-local', '.sites-runtime', '.codex', '.agents', 'work'}
+blocked = {'.git', 'node_modules', 'dist', '.next', '.vinext', 'outputs', '.wrangler', '.aicd-local', '.sites-runtime', '.codex', '.agents', 'work', '__pycache__'}
 manifest = []
 with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
     for name in sorted(set(files)):
@@ -20,7 +20,7 @@ with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
             continue
         if relative.name.startswith(('.env', '.dev.vars')) and relative.name not in {'.env.example', '.dev.vars.example'}:
             continue
-        if relative.name == 'aicd.standalone.json' or relative.suffix.lower() in {'.pem', '.key', '.tsbuildinfo'}:
+        if relative.name == 'aicd.standalone.json' or relative.suffix.lower() in {'.pem', '.key', '.tsbuildinfo', '.pyc', '.pyo', '.pyd'}:
             continue
         source = root / relative
         if source.is_symlink() or not source.is_file():

@@ -5,7 +5,7 @@ import { useState } from "react";
 import { visionCropGeometry } from "@/lib/ecus-evidence";
 import type { Candidate } from "@/lib/types";
 
-/** Show the same authenticated page image used by Kimi, with its proposed reading region. */
+/** Show the same authenticated page image used by AI, with its proposed reading region. */
 export function VisionEvidenceImage({
   documentId,
   page,
@@ -34,8 +34,8 @@ export function VisionEvidenceImage({
       <figure className="vision-evidence-crop">
         <figcaption>
           {locale === "vi"
-            ? "Vùng chứng từ Kimi đã đọc"
-            : "Source region read by Kimi"}
+            ? "Vùng chứng từ AI đã đọc"
+            : "Source region read by AI"}
         </figcaption>
         {!crop || failedUrl === url ? (
           <p>
@@ -98,8 +98,8 @@ export function VisionEvidenceImage({
         style={{ fontSize: 12, marginBottom: 8 }}
       >
         {locale === "vi"
-          ? "Kimi đã đọc vùng chứng từ được đánh dấu."
-          : "Kimi read the highlighted source region."}
+          ? "AI đã đọc vùng chứng từ được đánh dấu."
+          : "AI read the highlighted source region."}
       </figcaption>
       <div style={{ position: "relative", width: "100%", lineHeight: 0 }}>
         {/* eslint-disable-next-line @next/next/no-img-element -- The private endpoint requires the browser's session cookie. */}

@@ -18,6 +18,21 @@ function processIsAlive(pid) {
   catch (error) { return error.code !== 'ESRCH'; }
 }
 
+/** Production generation and the local server share framework metadata. */
+export function assertNoLocalBuildConflict(root) {
+  let owner;
+  try { owner = readFileSync(join(localPaths(root).directory, 'launcher.lock'), 'utf8'); }
+  catch (error) {
+    if (error.code === 'ENOENT') return;
+    throw new Error('Stop the local AICD server before building. Its launcher state could not be verified.');
+  }
+  let pid;
+  try { pid = JSON.parse(owner).pid; } catch { /* Partial/malformed locks fail closed. */ }
+  if (processIsAlive(pid)) {
+    throw new Error('Stop the local AICD server before building. Production builds share generated files with the running local server.');
+  }
+}
+
 /** Protect the shared local files even when another launch chooses a new port. */
 function reserveInstance(root) {
   const directory = localPaths(root).directory;

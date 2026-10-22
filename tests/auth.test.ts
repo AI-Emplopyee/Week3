@@ -70,6 +70,15 @@ test('provider errors remain generic and provider output is bounded', async () =
   await assert.rejects(() => providerRequest(config, '/user', {}, async () => { throw new Error('connection secret'); }), error => error instanceof AuthError && !error.message.includes('secret'));
   await assert.rejects(() => providerRequest(config, '/user', {}, async () => new Response(new ReadableStream({ start(controller) { controller.error(new Error('private transport detail')); } }), { headers: { 'content-type': 'application/json' } })), error => error instanceof AuthError && error.status === 503 && !error.message.includes('private'));
 });
+test('authentication releases provider response readers after success and rejected content', async () => {
+  for (const content of ['{}', '{"huge":"' + 'a'.repeat(65_000) + '"}']) {
+    const response = Response.json(JSON.parse(content));
+    const operation = providerRequest(config, '/user', {}, async () => response);
+    if (content.length > 64_000) await assert.rejects(operation, AuthError);
+    else assert.deepEqual(await operation, {});
+    assert.equal(response.body?.locked, false);
+  }
+});
 test('logout refreshes an expired access token before revoking the remaining provider session', async () => {
   const paths: string[] = [];
   const fetcher: typeof fetch = async (url, init) => {

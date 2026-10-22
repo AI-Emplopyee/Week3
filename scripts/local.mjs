@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { localPort } from './local-config.mjs';
+import { localPort, localViteEnvironment } from './local-config.mjs';
 import { prepareLocalLaunch } from './local-instance.mjs';
 import { startLocalBackground } from './local-background.mjs';
 
@@ -11,10 +11,7 @@ const port = localPort(process.argv.slice(2));
 // configuration. prepareLocalFiles ignores every other environment variable.
 const local = await prepareLocalLaunch(root, port, undefined, process.env);
 process.once('exit', local.release);
-const childEnv = { ...process.env, AICD_LOCAL: '1', AICD_LOCAL_REQUEST_TOKEN: local.token, CLOUDFLARE_ENV: '', CLOUDFLARE_VITE_WRANGLER_CONFIG_PATH: '', CLOUDFLARE_CF_FETCH_ENABLED: 'false', WRANGLER_SEND_METRICS: 'false', WRANGLER_WRITE_LOGS: 'false', CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV: 'false', CLOUDFLARE_INCLUDE_PROCESS_ENV: 'false' };
-for (const key of Object.keys(childEnv)) {
-  if (key.startsWith('SUPABASE_') || key.startsWith('MOONSHOT_') || ['AICD_AUTH_MODE', 'AICD_OWNER_EMAIL', 'AICD_STANDALONE'].includes(key)) delete childEnv[key];
-}
+const childEnv = localViteEnvironment({ ...process.env, AICD_LOCAL: '1', AICD_LOCAL_REQUEST_TOKEN: local.token, CLOUDFLARE_ENV: '', CLOUDFLARE_VITE_WRANGLER_CONFIG_PATH: '', CLOUDFLARE_CF_FETCH_ENABLED: 'false', WRANGLER_SEND_METRICS: 'false', WRANGLER_WRITE_LOGS: 'false', CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV: 'false', CLOUDFLARE_INCLUDE_PROCESS_ENV: 'false' });
 childEnv.WRANGLER_LOG_PATH = local.directory + '/logs';
 childEnv.WRANGLER_REGISTRY_PATH = local.directory + '/registry';
 childEnv.MINIFLARE_REGISTRY_PATH = local.directory + '/registry';

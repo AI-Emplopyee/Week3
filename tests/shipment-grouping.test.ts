@@ -403,7 +403,7 @@ test("multi-email intake retains each original and links only its own attachment
   const docs = packet()
     .slice(0, 2)
     .map((d, n) => ({ ...d, sourceEmailId: `email-${n}` }));
-  const emails = docs.map((d, n) => ({
+  const emails = docs.map((_, n) => ({
     id: `email-${n}`,
     messageId: `message-${n}`,
     sender: `sender${n}@example.invalid`,

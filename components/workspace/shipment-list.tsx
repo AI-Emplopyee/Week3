@@ -349,7 +349,7 @@ export function ShipmentList({
                         : sourceStatuses.includes("failed")
                           ? "Có tệp không mở được"
                           : unreadDocuments.length
-                            ? "Đang chờ Kimi đọc chứng từ"
+                            ? "Đang chờ AI đọc chứng từ"
                             : sourceStatuses.includes("needs_transcription")
                               ? "Có trang chưa đọc rõ"
                               : undefined;
@@ -383,7 +383,7 @@ export function ShipmentList({
                     : sourceStatuses.includes("failed")
                       ? "Có tệp không mở được"
                       : sourceStatuses.includes("pending_ai")
-                        ? "Đang chờ Kimi đọc chứng từ"
+                        ? "Đang chờ AI đọc chứng từ"
                         : sourceStatuses.includes("needs_transcription")
                           ? "Có trang chưa đọc rõ"
                           : "Có nguồn đối chiếu";

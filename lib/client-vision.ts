@@ -124,9 +124,9 @@ export async function runDocumentAi(options: {
   let workspace = options.workspace;
   const source = workspace.state.documents.find(document => document.id === options.documentId && document.active);
   if (!source || source.referenceOnly) throw new Error('Choose an active shipment document.');
-  if (!options.status.configured) throw new Error('An administrator must configure Kimi on the server.');
+  if (!options.status.configured) throw new Error('An administrator must configure the AI document reader on the server.');
   const visual = canRenderVisionDocument(source);
-  if (visual && options.status.visionSupported === false) throw new Error('The configured Kimi model does not support vision. An administrator must select a vision model.');
+  if (visual && options.status.visionSupported === false) throw new Error('The configured AI model does not support vision. An administrator must select a vision model.');
   const selected = options.pages ?? source.pages.filter(page => sourcePageNeedsKimi(workspace.state, source, page)).map(page => page.page);
   if (!selected.length) return { workspace, added: 0, rejected: 0, processed: 0 };
   const batches = buildAiBatches(source.pages, selected, options.status.limits, visual);

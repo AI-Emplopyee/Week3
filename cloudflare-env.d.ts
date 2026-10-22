@@ -10,6 +10,8 @@ declare namespace Cloudflare {
     AICD_OWNER_EMAIL?: string;
     MOONSHOT_API_KEY?: string;
     MOONSHOT_MODEL?: string;
+    ZAI_API_KEY?: string;
+    ZAI_MODEL?: string;
   }
 }
 

@@ -78,7 +78,7 @@ export async function providerRequest(config: SupabaseConfig, path: string, opti
   } catch (error) {
     if (error instanceof AuthError) throw error;
     throw new AuthError(503, 'The sign-in service is temporarily unavailable. Please retry.');
-  }
+  } finally { reader.releaseLock(); }
   try { return JSON.parse(text + decoder.decode()); } catch { throw new AuthError(502, 'The sign-in service returned an invalid response.'); }
 }
 export async function userForToken(config: SupabaseConfig, accessToken: string, fetcher?: typeof fetch): Promise<Actor> {

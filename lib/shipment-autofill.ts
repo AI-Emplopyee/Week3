@@ -1008,7 +1008,7 @@ function retireSupersededHeaderSelections(
       actor: actor.name,
       action: "source_selection_superseded",
       reason: legacy
-        ? "A stale legacy machine-source selection was superseded by clear, agreed current Kimi evidence. The original decision is retained here; no new human review was created."
+        ? "A stale legacy machine-source selection was superseded by clear, agreed current AI evidence. The original decision is retained here; no new human review was created."
         : "A stale source selection is semantically equivalent to clear, agreed current evidence. The original decision is retained here; no new human review was created.",
       before: structuredClone(reviewed),
       after: {

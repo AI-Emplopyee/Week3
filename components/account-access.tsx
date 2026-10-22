@@ -16,6 +16,14 @@ async function postAuth(endpoint: string, body: Record<string, unknown>): Promis
   if (!response.ok) throw new Error(value.error || 'Không thể hoàn tất thao tác tài khoản. Vui lòng thử lại.');
   return value;
 }
+/** Session changes must discard the mounted workspace and cached user data. */
+function reloadWorkspaceAfterAuthChange() {
+  notifyAuthChanged();
+  // A client route transition can retain workspace state from the previous session.
+  // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+  window.location.assign('/');
+}
+
 export function useAuthStatus() {
   const [status, setStatus] = useState<AuthStatus | null>(null); const [error, setError] = useState('');
   useEffect(() => {
@@ -66,7 +74,7 @@ function EmailPasswordForm({ onAuthenticated }: { onAuthenticated: () => void })
 export function SessionControl({ disabled = false }: { disabled?: boolean }) {
   const { t } = useLocale(); const { status } = useAuthStatus(); const [pending, setPending] = useState(false); const [error, setError] = useState('');
   if (status?.mode !== 'supabase' || !status.authenticated) return null;
-  const logout = async () => { setPending(true); setError(''); try { await postAuth('logout', {}); notifyAuthChanged(); window.location.assign('/'); } catch (error) { setError(error instanceof Error ? error.message : 'Không thể hoàn tất thao tác tài khoản. Vui lòng thử lại.'); setPending(false); } };
+  const logout = async () => { setPending(true); setError(''); try { await postAuth('logout', {}); reloadWorkspaceAfterAuthChange(); } catch (error) { setError(error instanceof Error ? error.message : 'Không thể hoàn tất thao tác tài khoản. Vui lòng thử lại.'); setPending(false); } };
   return <div className="session-control"><button className="button secondary small" disabled={disabled || pending} onClick={() => void logout()} title={t(disabled ? 'Lưu nội dung đang chỉnh sửa trước khi đăng xuất' : 'Đăng xuất khỏi tài khoản này')}>{pending ? <Loader2 size={14} className="spin" /> : <LogOut size={14} />}{t('Đăng xuất')}</button><AuthError message={error} /></div>;
 }
 
@@ -91,7 +99,7 @@ function AccountCallback() {
   const [password, setPassword] = useState(''); const [confirm, setConfirm] = useState(''); const [email, setEmail] = useState('');
   const passwordInput = useRef<HTMLInputElement>(null);
   const verify = async () => { if (!valid || !status?.configured || status.mode !== 'supabase' || pending) return; setPending(true); setError(''); try { const body = await postAuth('verify', { token_hash: tokenHash, type }); setEmail(body.user?.email || ''); setVerified(true); window.history.replaceState({}, '', '/auth/callback'); notifyAuthChanged(); requestAnimationFrame(() => passwordInput.current?.focus()); } catch (error) { setError(error instanceof Error ? error.message : 'Liên kết không hợp lệ hoặc đã hết hạn.'); } finally { setPending(false); } };
-  const savePassword = async (event: React.FormEvent) => { event.preventDefault(); if (pending) return; const validation = passwordValidation(password, confirm); if (validation) { setError(validation); return; } setPending(true); setError(''); try { await postAuth('password', { password }); setPassword(''); setConfirm(''); notifyAuthChanged(); window.location.assign('/'); } catch (error) { setError((error instanceof Error ? error.message : 'Không thể hoàn tất thao tác tài khoản. Vui lòng thử lại.') + '\n' + 'Quay lại đăng nhập và yêu cầu liên kết đặt lại mật khẩu mới trước khi thử tiếp.'); setPending(false); } };
+  const savePassword = async (event: React.FormEvent) => { event.preventDefault(); if (pending) return; const validation = passwordValidation(password, confirm); if (validation) { setError(validation); return; } setPending(true); setError(''); try { await postAuth('password', { password }); setPassword(''); setConfirm(''); reloadWorkspaceAfterAuthChange(); } catch (error) { setError((error instanceof Error ? error.message : 'Không thể hoàn tất thao tác tài khoản. Vui lòng thử lại.') + '\n' + 'Quay lại đăng nhập và yêu cầu liên kết đặt lại mật khẩu mới trước khi thử tiếp.'); setPending(false); } };
   return <main className="auth-callback-page"><header><Link className="standalone-brand" href="/" prefetch={false}>AICD<span>.</span></Link><LanguageSelect /></header><div className="auth-card"><span className="auth-symbol"><KeyRound size={28} /></span><div className="auth-card-heading"><div><h1>{t(verified ? 'Thiết lập mật khẩu của bạn' : type === 'recovery' ? 'Xác nhận đặt lại mật khẩu' : 'Hoàn tất lời mời tài khoản')}</h1><p>{t('Chỉ dành cho tài khoản được mời')}</p></div></div>
     {!verified ? <><p className="auth-callback-intro">{t('Chọn nút bên dưới để xác nhận liên kết và thiết lập mật khẩu. Mở trang này không tự sử dụng liên kết của bạn.')}</p>{!status && !statusError ? <p className="auth-loading"><Loader2 size={15} className="spin" />{t('Đang kiểm tra cấu hình máy chủ…')}</p> : status?.mode !== 'supabase' || !status.configured ? <p className="connection-blocker">{t('Đăng nhập email / mật khẩu chưa được cấu hình trên địa chỉ này. Liên hệ quản trị viên để nhận đúng liên kết.')}</p> : !valid ? <p className="connection-blocker">{t('Liên kết không hợp lệ hoặc đã hết hạn.')}</p> : <button className="button primary" disabled={pending} onClick={() => void verify()}>{pending ? <Loader2 className="spin" size={16} /> : <ShieldCheck size={16} />}{t('Xác nhận liên kết của tôi')}</button>}</> : <form className="auth-form" onSubmit={savePassword}>{email && <p className="account-email-display">{email}</p>}<label htmlFor="new-password">{t('Mật khẩu mới')}<input ref={passwordInput} id="new-password" type="password" autoComplete="new-password" minLength={12} maxLength={128} required value={password} disabled={pending} onChange={event => setPassword(event.target.value)} /><small>{t('Từ 12 đến 128 ký tự. Không chia sẻ mật khẩu với người khác.')}</small></label><label htmlFor="confirm-password">{t('Nhập lại mật khẩu mới')}<input id="confirm-password" type="password" autoComplete="new-password" minLength={12} maxLength={128} required value={confirm} disabled={pending} onChange={event => setConfirm(event.target.value)} /></label><button className="button primary" disabled={pending}>{pending && <Loader2 size={16} className="spin" />}{t('Lưu mật khẩu & tiếp tục')}</button></form>}
     <AuthError message={error || statusError} /><Link className="text-button auth-back-link" href="/" prefetch={false}><ArrowLeft size={13} />{t('Quay lại đăng nhập')}</Link>

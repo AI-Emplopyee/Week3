@@ -37,22 +37,26 @@ export function KimiPrompts() {
   return (
     <section className="card settings-card kimi-prompts-card">
       <div className="section-heading">
-        <h2><FileCode2 size={19} />{say("Prompt Kimi", "Kimi prompts")}</h2>
+        <h2><FileCode2 size={19} />{say("Prompt AI", "AI prompts")}</h2>
         {data?.model && <span className="muted">{data.model}</span>}
       </div>
       <p>{say(
-        "Xem nguyên văn các chỉ dẫn mà ứng dụng hiện gửi đến Kimi để đọc chứng từ, sửa kết quả và đối chiếu email.",
-        "Read the exact instructions the app currently sends to Kimi to read documents, repair results and match emails.",
+        "Xem nguyên văn các chỉ dẫn mà ứng dụng gửi đến mô hình AI đã cấu hình để đọc chứng từ, sửa kết quả và đối chiếu email.",
+        "Read the exact instructions the app sends to the configured AI model to read documents, repair results and match emails.",
       )}</p>
       <button className="button secondary" disabled={loading} onClick={() => void load()}>
-        {loading ? say("Đang tải…", "Loading…") : data ? say("Làm mới prompt", "Refresh prompts") : say("Xem prompt Kimi", "View Kimi prompts")}
+        {loading ? say("Đang tải…", "Loading…") : data ? say("Làm mới prompt", "Refresh prompts") : say("Xem prompt AI", "View AI prompts")}
       </button>
       {failed && <p role="alert">{say("Không tải được prompt. Vui lòng thử lại.", "Could not load prompts. Please try again.")}</p>}
       {data && (
         <div className="kimi-prompts-list">
           <p className="muted">{say(
-            "Ảnh trang hoặc nội dung tệp được gửi riêng cùng các chỉ dẫn này. {{pageNumber}} và {{validationFeedback}} được thay bằng số trang và kết quả kiểm tra của lần chạy. Nội dung prompt gốc được giữ bằng tiếng Anh.",
-            "Page images or file contents accompany these instructions. {{pageNumber}} and {{validationFeedback}} are replaced with the page number and validation feedback for that run. The original prompt wording is in English.",
+            "Chứng từ PDF và hình ảnh được gửi dưới dạng ảnh trang từ tệp gốc, không kèm văn bản trích xuất hoặc OCR. Tệp văn bản dùng nội dung văn bản gốc. Đối chiếu email sử dụng tiêu đề, nội dung email và các dữ kiện nhận diện lô hàng từ chứng từ. Trang này chỉ hiển thị chỉ dẫn, không hiển thị nội dung chứng từ, email hay khóa API.",
+            "PDFs and images are sent as page images from the originals, without extracted text or OCR. Text files use their original text. Email matching uses email subjects, bodies and shipment identifiers from documents. This page shows instructions only, without document contents, emails or API keys.",
+          )}</p>
+          <p className="muted">{say(
+            "{{pageNumber}} và {{validationFeedback}} được thay bằng số trang và kết quả kiểm tra của lần chạy. Nội dung prompt gốc được giữ bằng tiếng Anh. Đáp án ToKhai của nhân viên chỉ dùng để chấm điểm cục bộ, không gửi đến mô hình.",
+            "{{pageNumber}} and {{validationFeedback}} are replaced with the page number and validation feedback for that run. The original prompt wording is in English. Employee ToKhai answer keys are used only for local scoring and are not sent to the model.",
           )}</p>
           {data.prompts.map(prompt => (
             <details className="kimi-prompt" key={prompt.id}>

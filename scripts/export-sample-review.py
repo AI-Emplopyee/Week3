@@ -16,9 +16,26 @@ ROOT = Path(__file__).resolve().parents[1]
 BASE = ROOT / 'outputs/final-paired-20261020T005412Z'
 REVIEW = ROOT / 'outputs/final-paired-20261020T005412Z-review-work-v2'
 PILOT = ROOT / 'outputs/kimi-glm-comparison-terminal-20261020T014245Z'
+IMPROVEMENTS = ROOT / 'outputs/glm-form-improvement-20261020'
 OUT = ROOT / '.aicd-local/sample-review'
 TABS = ['general_1', 'general_2', 'goods', 'structured_goods_only', 'unmapped']
 SEALED_HASHES = {}
+IMPROVED_VARIANTS = [
+    dict(id='glm53-flash-improved-auto', label='GLM 5.3 Flash · improved automatic · 4 samples',
+         resultDirectory='candidate-v2-results', evaluationDirectory='evaluation-v2-automatic',
+         freezeSha256='10afddbd1b6295248a35c81a94e621f2357a30476d37e32ac30e03a32a82722e',
+         reportSha256='d4bcb7406bc9c515adfb505b5d9007269997be831afc3ea27ed917713b362ad1',
+         exactSha256='4100b2ea8173cba05cd2a6371ee4352198a6fc76cfd8f694e04c9fdc086d9a72',
+         integritySha256='32ee6339b2fb3a84194918240ee8c9aefbe7e62e686087610fe1c4dc2fa4a8bc',
+         reviewed=False, expectedCorrect=140, expectedExact=136, expectedMissing=97),
+    dict(id='glm53-flash-improved-reviewed', label='GLM 5.3 Flash · improved with review · 4 samples',
+         resultDirectory='final-reviewed-results', evaluationDirectory='final-evaluation',
+         freezeSha256='2cf7f2119e706a753e948f51889bb2361ed20fb955f573a706ba5485a8517995',
+         reportSha256='9789d7982f57923ca19323fa451d652d11281614cf1ab7928a99531fabc5601b',
+         exactSha256='57c16f0c1f189573c37f47d27c26895aaf2cfe52f646307f70c7844d933ebd36',
+         integritySha256='6662dd46258abc43191a609cdfe22d7c1fa11b0ed7210cc705d6b30adcda984c',
+         reviewed=True, expectedCorrect=159, expectedExact=138, expectedMissing=90),
+]
 
 def read(p):
     if p in SEALED_HASHES: assert digest(p) == SEALED_HASHES[p], f'Sealed input changed: {p.name}'
@@ -48,7 +65,42 @@ def metrics(rows):
     return dict(visible=metric([r for r in rows if r['tab'] in TABS[:3]]), all=metric(rows),
                 byForm={tab:metric([r for r in rows if r['tab']==tab]) for tab in TABS})
 
+def seal_input(path, sha256):
+    assert path.is_file() and digest(path) == sha256, f'Sealed improvement input changed: {path.name}'
+    SEALED_HASHES[path] = sha256
+
+def improvement_inputs(config):
+    result_root = IMPROVEMENTS/config['resultDirectory']
+    evaluation_root = IMPROVEMENTS/config['evaluationDirectory']
+    freeze_path = result_root/'result-freeze.json'
+    seal_input(freeze_path, config['freezeSha256'])
+    for entry in read(freeze_path)['files']:
+        path = (result_root/entry['path']).resolve()
+        assert path.is_relative_to(IMPROVEMENTS.resolve()), 'Improvement freeze path escaped its evidence directory.'
+        seal_input(path, entry['sha256'])
+    for filename, pin in [('improvement-report.json','reportSha256'),
+                          ('candidate-unchanged-exact-report.json','exactSha256'),
+                          ('evidence-integrity-manifest.json','integritySha256')]:
+        seal_input(evaluation_root/filename, config[pin])
+    integrity = read(evaluation_root/'evidence-integrity-manifest.json')
+    result_inputs = []
+    for entry in integrity['candidateInputs']:
+        path = Path(entry['path']).resolve()
+        assert path.is_relative_to(IMPROVEMENTS.resolve()), 'Evaluation input escaped its evidence directory.'
+        seal_input(path, entry['sha256'])
+        if entry['kind'] == 'candidate_result':
+            assert path.parent == (result_root/'results').resolve(), 'Scoring report belongs to another candidate.'
+            result_inputs.append(path.stem)
+    report = read(evaluation_root/'improvement-report.json')
+    evaluated = report['posthocReview']['candidate'] if config['reviewed'] else report['candidate']
+    assert set(result_inputs) == {p['packetId'] for p in evaluated['packets']} and len(result_inputs) == 4
+    assert evaluated['visibleUiComparableSubset']['eligible'] == 300
+    assert evaluated['populationOverall']['eligible'] == 340
+    return result_root, report, evaluated, read(evaluation_root/'candidate-unchanged-exact-report.json')
+
 def main():
+    previous_data = read(OUT/'data.json') if (OUT/'data.json').exists() else None
+    previous_assets = read(OUT/'asset-index.json')['assets'] if (OUT/'asset-index.json').exists() else None
     # Pin the sealed evaluation inputs; a changed report cannot silently replace a score.
     assert digest(BASE/'final-manifest.json') == '79d3b6c7a4d76b5198adb63dbe77aad29666c81e67686c76bcd6e8644d9b1a2c'
     assert digest(REVIEW/'review-manifest.json') == '068565b822f94abca4d79c2a8fe4653a7e723af8785f517c48a406b815e02766'
@@ -161,6 +213,58 @@ def main():
     assert len(baseline_samples)==29 and len(variants)==3
     for k,v in content['visibleUiComparableSubset'].items():
         assert variants[0]['metrics']['visible'][k]==v, f'Benchmark metric changed: {k}'
+    # Improvements are additive saved variants; frozen original forms/scores stay intact.
+    original_variants = copy.deepcopy(variants)
+    for config in IMPROVED_VARIANTS:
+        result_root, report, evaluated, exact_improved = improvement_inputs(config)
+        ident = config['id']; grouped = collections.defaultdict(list)
+        for row in evaluated['components']: grouped[row['packetId']].append(row)
+        samples = []
+        exact_packets = {p['packetId']:p for p in exact_improved['packets']}
+        for packet_id, rows in grouped.items():
+            result_path = result_root/'results'/f'{packet_id}.json'
+            result = read(result_path)
+            assert result['model'] == 'glm-5.3-flash' and result['packetId'] == packet_id
+            assert result['improvementAudit']['sourceOnly'] is True and result['improvementAudit']['employeeAnswerKeysUsed'] is False
+            assert not {d['sha256'] for d in result['state']['documents']}.intersection(answers)
+            item = sample(ident, packet_id, result_path, rows, result_root.name)
+            scored = exact_packets[packet_id]
+            item.update(scoreStatus=scored['status'], extraGoodsRows=scored.get('extraGoodsRows'),
+                        unscoredPopulatedComponents=scored.get('extraFilledComponents',0),
+                        labelConflictCount=len(scored.get('labelConflicts',[])), warnings=list(scored.get('warnings',[])))
+            if config['reviewed']:
+                item['warnings'].append('Includes AI-assisted source review and posthoc pair-bound content review; not independent human validation or fully automatic acceptance.')
+                outcome = result['improvementAudit'].get('enrichment',{}).get('originalOutcome',{})
+                if outcome.get('success') is False:
+                    item['failures'].append(dict(stage='enrichment',page=None,error=outcome.get('error','Enrichment response failed validation.'),assetId=None))
+            samples.append(item)
+        mm = metrics(evaluated['components'])
+        for key, value in evaluated['visibleUiComparableSubset'].items():
+            if key in mm['visible']: assert mm['visible'][key] == value, f'Improvement score changed: {key}'
+        assert (mm['visible']['contentCorrect'],mm['visible']['exactMatches'],mm['visible']['missing']) == (config['expectedCorrect'],config['expectedExact'],config['expectedMissing'])
+        enrichment = report.get('reviewAssistedEnrichment') or {}
+        variants.append(dict(id=ident,label=config['label'],model='glm-5.3-flash',
+            scope='Four reused development samples · '+('AI-assisted review' if config['reviewed'] else 'automatic mapping improvements'),
+            sampleCount=len(samples),metrics=mm,samples=samples,
+            stage='review_assisted' if config['reviewed'] else 'automatic_mapping',reviewAssisted=config['reviewed'],
+            scoreMethod='posthoc_pair_bound_review' if config['reviewed'] else 'frozen_pair_bound_review',
+            limitations=['Four reused development samples; no independent or held-out validation.',
+                         'The 300 comparable visible components do not cover every form control. Missing values remain uncredited.',
+                         'Goods codes and missing customs decisions still require approved evidence.'] +
+                        (['Equivalent-content decisions are AI-assisted internal review, not independent human validation.',
+                          'All four additional enrichment envelopes failed. Separately reviewed source facts were applied without relabelling those failures.'] if config['reviewed'] else []),
+            processingSummary=dict(newProviderCalls=enrichment.get('packetOutcomes',0),
+                fullEnvelopeFailures=enrichment.get('fullEnvelopeFailures',0),
+                fullyAcceptedEnvelopes=enrichment.get('fullEnvelopesAcceptedForApplication',0),
+                reviewedSourceEdits=enrichment.get('appliedReviewedChanges',0))))
+    assert len(variants) == 5 and variants[:3] == original_variants
+    old_variants_preserved = True
+    if previous_data:
+        previous_variants = {v['id']:v for v in previous_data['variants']}
+        for variant in original_variants:
+            assert previous_variants.get(variant['id']) == variant, f'Original website variant changed: {variant["id"]}'
+    if previous_assets is not None:
+        assert previous_assets == assets, 'Original website asset index changed.'
     inventory=[]
     for pid,packet in packets.items():
         scored=scores[pid]; available=[v['id'] for v in variants if any(s['packetId']==pid for s in v['samples'])]
@@ -172,7 +276,7 @@ def main():
         'Equivalent-content decisions are AI-assisted internal review, not independent human validation. Goods rows use frozen printed-row alignment.',
         'Kimi covers 29 eligible collections. GLM covers four related development collections; the fresh Kimi pilot remains unrun.',
         'All forms remain drafts. Required customs decisions need approved business information. No sample is submitted to ECUS.'
-    ],historicalPilotReference=dict(sampleCount=4,visible={**historical['visibleThreeTabs'],'measured':True},isFreshRun=False),inventory=inventory,variants=variants,validation=dict(inventoryCollections=len(inventory),eligibleCollections=len(baseline_samples),exportedSamples=sum(v['sampleCount'] for v in variants),comparedComponents=sum(len(s['comparisons']) for v in variants for s in v['samples']),originalAssets=len(assets),unavailableAssets=len(unavailable),**counts,sourceAndAnswerHashesDisjoint=True,frozenReportsMatched=True))
+    ],historicalPilotReference=dict(sampleCount=4,visible={**historical['visibleThreeTabs'],'measured':True},isFreshRun=False),inventory=inventory,variants=variants,validation=dict(inventoryCollections=len(inventory),eligibleCollections=len(baseline_samples),exportedSamples=sum(v['sampleCount'] for v in variants),comparedComponents=sum(len(s['comparisons']) for v in variants for s in v['samples']),originalAssets=len(assets),unavailableAssets=len(unavailable),**counts,sourceAndAnswerHashesDisjoint=True,frozenReportsMatched=True,originalVariantsPreserved=old_variants_preserved,improvementFreezeHashesVerified=True))
     assert not unavailable, 'An original file is unavailable or changed.'
     save(OUT/'asset-index.json',dict(schemaVersion=1,generatedAt=now,assets=assets))
     save(OUT/'data.json',data)

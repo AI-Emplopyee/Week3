@@ -1,7 +1,7 @@
 import vinext from "vinext";
 import { defineConfig } from "vite";
 import { standaloneConfig } from "./scripts/standalone-config.mjs";
-import { assertLocalDevelopment, localPaths } from "./scripts/local-config.mjs";
+import { assertLocalDevelopment, localPaths, PRIVATE_FILE_PATTERNS } from "./scripts/local-config.mjs";
 import { localOnly } from "./build/local-vite-plugin";
 
 const local = process.env.AICD_LOCAL === "1";
@@ -39,7 +39,7 @@ export default defineConfig(async ({ command }) => {
       ...(local ? { strictPort: true } : {}),
       // macOS sandboxed previews cannot use FSEvents.
       ...(process.platform === "darwin" ? { watch: { useFsEvents: false, usePolling: true } } : {}),
-      fs: { deny: ["**/.env", "**/.env.*", "**/*.{crt,pem,key}", "**/.git/**", "**/.aicd-local/**", "**/.dev.vars*", "**/.wrangler/**"] },
+      fs: { deny: PRIVATE_FILE_PATTERNS },
     },
     plugins: [
       ...(local ? [localOnly(process.env.AICD_LOCAL_REQUEST_TOKEN!)] : []),

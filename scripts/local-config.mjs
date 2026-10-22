@@ -4,6 +4,13 @@ import { parseEnv } from 'node:util';
 import { resolve } from 'node:path';
 
 export const LOCAL_DATABASE_ID = 'a1cd0000-0000-4000-8000-000000000001';
+// Vite's source server must never expose credentials, saved work or private
+// evaluation artifacts, including through its /@fs filesystem route.
+export const PRIVATE_FILE_PATTERNS = [
+  '**/.env', '**/.env.*', '**/*.{crt,pem,key}', '**/.git/**',
+  '**/.aicd-local/**', '**/.dev.vars*', '**/.wrangler/**',
+  '**/outputs/**', '**/work/**', '**/.codex/**', '**/.agents/**', '**/.sites-runtime/**',
+];
 export function localPaths(root = process.cwd()) {
   const directory = resolve(root, '.aicd-local');
   return { directory, state: resolve(directory, 'state'), config: resolve(directory, 'wrangler.json'), secrets: resolve(directory, '.dev.vars') };
@@ -15,6 +22,13 @@ export function localPort(args) {
 }
 export function assertLocalDevelopment(command, token) {
   if (command !== 'serve' || typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) throw new Error('Local mode cannot be built or deployed. Start it with npm run local.');
+}
+export function localViteEnvironment(environment) {
+  return Object.fromEntries(Object.entries(environment).filter(([key]) => {
+    const privateKey = key.replace(/^(?:VITE_|NEXT_PUBLIC_)/, '');
+    return !['SUPABASE_', 'MOONSHOT_', 'ZAI_'].some(prefix => privateKey.startsWith(prefix))
+      && !['AICD_AUTH_MODE', 'AICD_OWNER_EMAIL', 'AICD_STANDALONE'].includes(key);
+  }));
 }
 export function prepareLocalFiles(root = process.cwd(), providerEnvironment = {}) {
   const paths = localPaths(root);
@@ -32,15 +46,16 @@ export function prepareLocalFiles(root = process.cwd(), providerEnvironment = {}
   // Root .env/.dev.vars and all hosted authentication settings stay isolated.
   // Environment overrides are persisted here, then stripped from Vite's process
   // environment by local.mjs so they cannot become browser build variables.
-  for (const key of ['MOONSHOT_API_KEY', 'MOONSHOT_MODEL']) {
+  for (const key of ['MOONSHOT_API_KEY', 'MOONSHOT_MODEL', 'ZAI_API_KEY', 'ZAI_MODEL']) {
     const provided = Object.hasOwn(providerEnvironment, key) ? providerEnvironment[key] : existing[key];
-    if (provided !== undefined && typeof provided !== 'string') throw new Error(`Invalid ${key} in local Kimi configuration.`);
+    if (provided !== undefined && typeof provided !== 'string') throw new Error(`Invalid ${key} in local AI configuration.`);
     const value = provided?.trim();
     if (value) {
-      if (value.length > 8192 || /[\r\n"\\]/.test(value)) throw new Error(`Invalid ${key} in local Kimi configuration.`);
+      if (value.length > 8192 || /[\r\n"\\]/.test(value)) throw new Error(`Invalid ${key} in local AI configuration.`);
       secrets[key] = value;
     }
   }
+  if (secrets.ZAI_API_KEY && !secrets.ZAI_MODEL) secrets.ZAI_MODEL = 'glm-5.3-flash';
   const config = {
     name: 'aicd-local', main: resolve(root, 'build/worker.ts'), compatibility_date: '2026-05-15', compatibility_flags: ['nodejs_compat'],
     vars: { AICD_AUTH_MODE: 'local', AICD_BACKGROUND_PROCESSING: providerEnvironment.AICD_BACKGROUND_PROCESSING === '0' ? '0' : '1' }, secrets: { required: Object.keys(secrets) },

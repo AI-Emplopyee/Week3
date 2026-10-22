@@ -12,7 +12,7 @@ The intended product uses Google sign-in and owner-approved access requests. Tho
 
 1. A Cloudflare account for the application, D1 database and private R2 document storage.
 2. A Supabase project for invite-only email/password identity. Supabase handles password hashing and verification; AICD does not save passwords in its database.
-3. Your Moonshot International API key when you want to enable Kimi. The default model is `kimi-k2.6`; an optional `MOONSHOT_MODEL` override must name a vision-capable model available to your account. No Kimi request is made while the key is absent.
+3. Your Z.ai API key when you want to enable GLM-5.3-Flash. The live model is fixed to `glm-5.3-flash` with low reasoning effort. No provider request is made while the key is absent, and there is no Moonshot fallback.
 
 You can develop locally without deploying a public endpoint. Real email/password actions require HTTPS, including during testing; the plain HTTP loopback preview cannot complete real login. Use an HTTPS staging deployment to test provider login and email delivery.
 
@@ -35,6 +35,8 @@ npm run typecheck
 npm run build:standalone
 ```
 
+Stop the local server before building, checking or deploying: each standalone command uses the same guarded production builder, and generated framework files are shared with local development. An active or unverifiable local launcher blocks the build without stopping any process.
+
 The standalone build sets `AICD_AUTH_MODE=supabase` and excludes local single-user access. `npm run check:standalone` performs a Wrangler dry run without deployment. `npm run deploy:standalone` builds again and deploys to your Cloudflare account; it does not create those resources for you.
 
 Apply migrations to the new database before using the application:
@@ -55,11 +57,11 @@ For production, configure secrets in the Cloudflare dashboard, or use Wrangler's
 npx wrangler secret put SUPABASE_URL --config dist/server/wrangler.json
 npx wrangler secret put SUPABASE_ANON_KEY --config dist/server/wrangler.json
 npx wrangler secret put AICD_OWNER_EMAIL --config dist/server/wrangler.json
-npx wrangler secret put MOONSHOT_API_KEY --config dist/server/wrangler.json
-npx wrangler secret put MOONSHOT_MODEL --config dist/server/wrangler.json
+npx wrangler secret put ZAI_API_KEY --config dist/server/wrangler.json
+npx wrangler secret put ZAI_MODEL --config dist/server/wrangler.json
 ```
 
-The Supabase anon/publishable key identifies the project; it is not a service-role/admin key. Do not supply a service-role key. The Kimi key is a billable secret and must remain server-side. Neither belongs in a `VITE_` or `NEXT_PUBLIC_` variable.
+The Supabase anon/publishable key identifies the project; it is not a service-role/admin key. Do not supply a service-role key. The GLM key is a billable secret and must remain server-side. Neither belongs in a `VITE_` or `NEXT_PUBLIC_` variable.
 
 ## Login safety and remaining setup
 
@@ -67,11 +69,11 @@ Invite-only access is enforced in the application as well as Supabase. Disable p
 
 The adapter uses provider-verified identities, protected cookies, same-origin mutation checks and login throttling. Those controls reduce risk; they are not a security certification. Real provider login, email delivery, recovery, deployment and authorization must be checked in your configured environment before client use. MFA support is a future enhancement to the current password login flow.
 
-## Kimi document processing
+## GLM document processing
 
-Kimi is the only document extractor. The browser uses PDFium to render authenticated PDF pages into images, without extracting text or running OCR; the server supplies the Kimi secret and sends those bounded page images. Text-based source files use a Kimi text request. The response contains factual header and commercial goods candidates with source evidence. Ordinary application code validates and reconciles those candidates before filling an editable web draft. Users have no AI provider settings. The application never gives the model authority to approve a declaration, assign customs decisions, send email or transmit to ECUS. See [Kimi vision extraction](kimi-vision.md) for the data flow and limitations.
+GLM is the only document extractor. The browser uses PDFium to render authenticated PDF pages into images, without extracting text or running OCR; the server supplies the GLM secret and sends those bounded page images. Text-based source files use a GLM text request. The response contains factual header and commercial goods candidates with source evidence. Ordinary application code validates and reconciles those candidates before filling an editable web draft. Users have no AI provider settings. The application never gives the model authority to approve a declaration, assign customs decisions, send email or transmit to ECUS. See [GLM vision extraction](kimi-vision.md) for the data flow and limitations.
 
-Without a key, originals are preserved and wait for Kimi; there is no PDF.js or OCR fallback. Enabling the API sends confidential page images and text to Moonshot under the terms of your account. Setup requires a private server secret, never a browser environment variable. The implementation is tested with mocked provider responses; those tests do not establish live model accuracy. Keep the browser open during the current extraction workflow; there is no durable background worker for processing after the browser closes.
+Without a key, originals are preserved and wait for GLM; there is no PDF.js or OCR fallback. Enabling the API sends confidential page images and text to Z.ai under the terms of your account. Setup requires a private server secret, never a browser environment variable. The implementation is tested with mocked provider responses; those tests do not establish live model accuracy. Hosted standalone extraction requires the browser to remain open; a hosted background worker is not implemented. The separate local launcher has a durable page queue and continues while its server is running, including after the browser closes.
 
 ## References
 
@@ -79,4 +81,4 @@ Without a key, originals are preserved and wait for Kimi; there is no PDF.js or 
 - [Supabase password security](https://supabase.com/docs/guides/auth/password-security)
 - [Cloudflare Worker secrets](https://developers.cloudflare.com/workers/configuration/secrets/)
 - [Cloudflare D1 migrations](https://developers.cloudflare.com/d1/reference/migrations/)
-- [Kimi API quickstart](https://platform.kimi.ai/docs/overview)
+- [GLM-5.3-Flash](https://docs.z.ai/guides/vlm/glm-5.3-flash)

@@ -1,3 +1,4 @@
+import { documentAiConfiguration } from '@/lib/ai-provider';
 import { z } from 'zod';
 import { env } from 'cloudflare:workers';
 import { automaticDocuments, automaticPageNeedsKimi, claimAiJob, finishAiJob, enqueuePage, type AiJob, AUTOMATIC_CONCURRENCY } from '@/lib/ai-processing-queue';
@@ -13,7 +14,7 @@ export async function pendingAiJobs(request: Request) {
   requireSameOrigin(request);
   if (runtimeAuthMode() !== 'local') throw new ApiError(404, 'Local background processing is unavailable in this deployment.');
   const context = await workspace(request);
-  const status = kimiStatus({ apiKey: env.MOONSHOT_API_KEY, model: env.MOONSHOT_MODEL });
+  const status = kimiStatus(documentAiConfiguration(env));
   if (!status.configured || env.AICD_BACKGROUND_PROCESSING !== '1') return json({ configured: false, jobs: [], concurrency: AUTOMATIC_CONCURRENCY });
   const input = z.object({ failure: z.object({ documentId: z.string().max(160), documentVersion: z.number().int().positive(), sha256: z.string().regex(/^[a-f0-9]{64}$/), page: z.number().int().positive(), error: z.string().max(500) }).strict().optional() }).strict().parse(await readJson(request));
   const documents = automaticDocuments(context.state);

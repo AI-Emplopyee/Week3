@@ -6,7 +6,7 @@ This guide explains the application in this repository, how its parts cooperate,
 
 AICD is a document review application with owner-configured AI assistance. Its central distinction is between **what a document says**, **what software proposes**, and **what a person has reviewed**. Keeping those separate lets a reviewer inspect disagreements and prevents an extraction result from silently becoming a customs decision.
 
-The current local application has browser PDF page rendering, Kimi-only extraction, batch intake, document grouping before declaration autofill, targeted questions, local editable email drafts, audit history, bilingual reports and a simulated ECUS handoff. When the owner configures the server, Kimi reads rendered original pages after upload without PDF text extraction or OCR, and Kimi can associate imported emails with current shipment evidence. Gmail synchronization, email sending, scheduled follow-ups, a real ECUS connection and executable verified customs rules are still absent. The existing Supabase password adapter is retained for standalone testing; the selected product direction is Google sign-in plus owner approval, still to be implemented. Local use does not require a login.
+The current local application has local and browser PDF page rendering, GLM-5.3-Flash extraction, batch intake, document grouping before declaration autofill, targeted questions, local editable email drafts, audit history, bilingual reports and a simulated ECUS handoff. When the owner configures the server, GLM reads rendered original pages after upload without PDF text extraction or OCR, and GLM can associate imported emails with current shipment evidence. Gmail synchronization, email sending, scheduled follow-ups, a real ECUS connection and executable verified customs rules are still absent. The existing Supabase password adapter is retained for standalone testing; the selected product direction is Google sign-in plus owner approval, still to be implemented. Local use does not require a login.
 
 ## 0. Connect this to what you know about AI
 
@@ -15,11 +15,11 @@ In model work, you distinguish input data, predictions, labels, evaluation and m
 | Familiar AI concept | Closest AICD concept | Important difference |
 | --- | --- | --- |
 | Raw example | Original document bytes and page text | A document is evidence, not automatically a true statement. |
-| Prediction | An extraction `Candidate` | New automated document facts come from Kimi inference; older records retain their original provenance. |
+| Prediction | An extraction `Candidate` | New automated document facts come from GLM inference; older records retain their original provenance. |
 | Checked annotation | A human `ReviewedValue` | It is an accountable workflow decision, not automatically a training label. |
 | Evaluation checks | Software issues and test fixtures | Current checks do not establish broad extraction accuracy. |
 | Versioned experiment artifact | An approval `Snapshot` | It freezes a particular reviewed shipment and evidence, not model weights. |
-| Inference service | The owner-configured Kimi API | The pipeline sends bounded page images or source-file text and validates source-linked proposals. It does not train or fine-tune Kimi. |
+| Inference service | The owner-configured GLM API | The pipeline sends bounded page images or source-file text and validates source-linked proposals. It does not train or fine-tune GLM. |
 
 There is no automatic learning from corrections in this code. A correction is saved to the case and audit history. Per-client correction memory and any future dataset promotion need separate design, permission, isolation and evaluation. More reviews do not currently update model parameters or parser rules.
 
@@ -103,7 +103,7 @@ An **API** is the agreed interface between those environments. Here it consists 
 | D1 / SQLite | Workspace records, memberships and authentication metadata | SQL supports conditional, atomic updates and uniqueness constraints. |
 | R2 object storage | Original PDFs, images and emails | Large original files belong outside the database's JSON record. Local mode emulates this on disk. |
 | Zod | Runtime input and provider response validation | Network inputs remain untrusted even when the app itself is written in TypeScript. |
-| PDFium | Rendering PDF pages into images for Kimi | Rendering draws the original page; it does not recognize text or fill form values. |
+| PDFium | Rendering PDF pages into images for GLM | Rendering draws the original page; it does not recognize text or fill form values. |
 | pdf-lib and fontkit | Generating downloadable reports | The app controls pagination and embeds a font that supports Vietnamese. |
 | PostalMime | Reading saved `.eml` messages | MIME messages need a parser; attachments cannot reliably be recovered with simple text splitting. |
 
@@ -129,7 +129,7 @@ flowchart TD
     API --> D1
     API --> R2
   end
-  API -. Bounded images and text when configured .-> Kimi[Moonshot International]
+  API -. Bounded images and text when configured .-> GLM[Z.ai]
   API -. Future hosted identity mode .-> Auth[Supabase Auth]
 ```
 
@@ -140,10 +140,10 @@ The most important boundaries are:
 1. The browser supplies input, but the backend checks identity, membership, permitted actions and revision numbers.
 2. The domain engine determines whether an action is valid. Hiding a button is not permission enforcement.
 3. Original bytes are stored separately from interpreted text and reviewed values.
-4. Kimi returns suggestions, not trusted application actions.
+4. GLM returns suggestions, not trusted application actions.
 5. Internal approval and the test ECUS result never become official customs approval.
 
-There is no message queue or background job system in the current implementation. Upload handling and Kimi requests run in request-oriented flows. There is no live collaboration socket; other sessions' edits are detected when a save meets a newer revision.
+The local launcher runs a durable SQLite page-job queue with two originals in parallel, and matches imported emails after their documents finish. It continues while the server runs, including with the browser closed. Hosted standalone extraction remains request-driven. There is no live collaboration socket; other sessions' edits are detected when a save meets a newer revision.
 
 ## 3. Startup from the first command
 
@@ -161,7 +161,7 @@ The launcher performs these steps:
 1. Parses the optional port. It accepts a loopback port override, not an arbitrary public host or deployment arguments.
 2. Calls [local-instance.mjs](../scripts/local-instance.mjs) to check that the port is free and reserve this workspace using a process lock. The check happens before writing configuration. Otherwise a second launch could rotate the first server's internal token.
 3. Calls [local-config.mjs](../scripts/local-config.mjs) to create private local configuration and a random per-launch proof. The directory uses permission `700`; private files use `600`.
-4. Keeps only explicitly allowed Kimi settings from the private local secrets file or administrator-supplied `MOONSHOT_API_KEY` / `MOONSHOT_MODEL` environment overrides. It saves those Worker secrets, then removes provider values from the Vite process environment. Hosted identity settings and root environment files remain excluded.
+4. Keeps only explicitly allowed GLM settings from the private local secrets file or administrator-supplied `ZAI_API_KEY` / `ZAI_MODEL` environment overrides. It saves those Worker secrets, then removes provider values from the Vite process environment. Hosted identity settings and root environment files remain excluded.
 5. Applies database migrations with Wrangler's explicit `--local` flag.
 6. Starts Vite at `http://127.0.0.1:5173` with a strict port. If the port is occupied, it fails instead of silently changing the address.
 
@@ -169,7 +169,7 @@ The launcher performs these steps:
 
 [lib/local-auth.ts](../lib/local-auth.ts) checks that proof again inside the Worker, along with the development-only build flag. This is defense in depth: setting `AICD_AUTH_MODE=local` on a production deployment is insufficient to enable local access.
 
-Local mode represents one actor, `Local owner (this Mac)`. It is not a password-protected multi-user service. Any local process able to reach this Mac's loopback listener can use that actor, including a process belonging to another local OS user. The HTTP gate does not check the operating-system user ID; filesystem permissions separately restrict direct access to saved files. Stored state is under `.aicd-local/state/`; source code is not the same thing as saved shipment data. See [local setup](local-setup.md) for backup and Kimi configuration details.
+Local mode represents one actor, `Local owner (this Mac)`. It is not a password-protected multi-user service. Any local process able to reach this Mac's loopback listener can use that actor, including a process belonging to another local OS user. The HTTP gate does not check the operating-system user ID; filesystem permissions separately restrict direct access to saved files. Stored state is under `.aicd-local/state/`; source code is not the same thing as saved shipment data. See [local setup](local-setup.md) for backup and GLM configuration details.
 
 ## 4. The data model is the foundation
 
@@ -222,7 +222,7 @@ TypeScript checks trusted source code during development. [server-validation.ts]
 
 The upload handler in [app/page.tsx](../app/page.tsx) receives browser `File` objects. It calls [prepareIntakeFile](../lib/client-intake.ts) for every selected file, presents progress and allows cancellation. That routine uses `prepareFile` for ordinary supported files and for supported attachments inside a saved email. Once the complete selection is prepared, the browser sends all original files, matching page metadata and the expected workspace revision to `/api/documents` in one request.
 
-For TXT/CSV, the browser reads source text and treats form-feed characters as page breaks. For PDFs, the server counts physical pages and PDFium checks that count before rendering page images; it does not extract the hidden text layer or recognize words. Images likewise wait for Kimi. After originals are saved, the browser prepares authenticated page images and asks the configured server to run Kimi. Text files also use Kimi to produce form facts. See [the extraction pipeline](kimi-vision.md) for the current sequence.
+For TXT/CSV, the browser reads source text and treats form-feed characters as page breaks. For PDFs, the server counts physical pages and PDFium checks that count before rendering page images; it does not extract the hidden text layer or recognize words. Images likewise wait for GLM. After originals are saved, the browser prepares authenticated page images and asks the configured server to run GLM. Text files also use GLM to produce form facts. See [the extraction pipeline](kimi-vision.md) for the current sequence.
 
 The route delegates to [lib/server-upload.ts](../lib/server-upload.ts). The backend:
 
@@ -232,7 +232,7 @@ The route delegates to [lib/server-upload.ts](../lib/server-upload.ts). The back
 4. Computes SHA-256 from the original bytes and checks duplicates.
 5. Validates page metadata. For PDF files it independently checks the physical page count with `boundedPdfPages`.
 6. Stages original files and emails in R2 under server-derived workspace/object keys.
-7. Runs eligible Kimi extraction for text sources when the owner configured it; PDF/image reading happens after originals are saved. Without Kimi, the original remains saved in a pending state.
+7. Runs eligible GLM extraction for text sources when the owner configured it; PDF/image reading happens after originals are saved. Without GLM, the original remains saved in a pending state.
 8. Creates one internal intake action containing all prepared documents and emails. The engine groups the complete batch against existing open shipments, then reconciles facts and fills supported fields only for settled groups.
 9. Conditionally commits the resulting workspace in one D1 revision change.
 
@@ -242,9 +242,9 @@ Original bytes are preserved, but the server does not independently prove that t
 
 ### Rendering is different from extraction
 
-A PDF describes what to draw on a page. [lib/pdf-pages.ts](../lib/pdf-pages.ts) counts physical PDF pages on the server. [lib/pdf-raster.ts](../lib/pdf-raster.ts) uses PDFium to draw each page as an image in a browser worker managed by [lib/client-pdf-raster.ts](../lib/client-pdf-raster.ts). This preserves the visible labels, tables, stamps and layout that Kimi needs. PDFium is not used to select or recognize the document's words.
+A PDF describes what to draw on a page. [lib/pdf-pages.ts](../lib/pdf-pages.ts) counts physical PDF pages on the server. [lib/pdf-raster.ts](../lib/pdf-raster.ts) uses PDFium to draw each page as an image in a browser worker managed by [lib/client-pdf-raster.ts](../lib/client-pdf-raster.ts). This preserves the visible labels, tables, stamps and layout that GLM needs. PDFium is not used to select or recognize the document's words.
 
-PDF.js, Tesseract, OCR workers and language data have been removed from the active pipeline. [client-intake.ts](../lib/client-intake.ts) prepares page metadata and attachments. [client-vision.ts](../lib/client-vision.ts) renders authenticated saved pages, sends them through the server to Kimi, and saves progress. Kimi supplies page classification, clarity and field extraction. Saved source quotations are shown in the text view; this is not a full page transcript.
+PDF.js, Tesseract, OCR workers and language data have been removed from the active pipeline. [client-intake.ts](../lib/client-intake.ts) prepares page metadata and attachments. [client-vision.ts](../lib/client-vision.ts) renders authenticated saved pages, sends them through the server to GLM, and saves progress. GLM supplies page classification, clarity and field extraction. The Documents panel shows the original file. Saved quotations remain in field evidence; there is no extracted-text tab.
 
 For a clear reading with valid source evidence and no contradiction, the application fills the draft without a routine confirmation question. It still asks about missing, ambiguous or conflicting information and keeps final approval human. If a page cannot be read, the system preserves the original and the unfinished work rather than silently switching to a second extractor.
 
@@ -254,7 +254,7 @@ The current limits are 20 top-level files per request, 20 MiB and 50 pages per f
 
 For `.eml` input, the browser uses PostalMime to find attachments and prepares each supported attachment with the same file preparation routine used for direct uploads. The backend parses the original email independently and matches submitted attachment metadata by name and attachment index. It preserves message and attachment bytes, sender, subject, timestamp, message ID, available plain body text, reply headers and relationships. Duplicate message IDs or hashes prevent duplicate messages, and attachment hashes identify reused files. Each email may contain up to 50 attachments. A reply without attachments can also be saved: correspondence does not need a new document or an empty shipment case.
 
-Unreadable and unsupported attachments are retained with a visible problem instead of disappearing. A raw API upload does not acquire a hidden OCR service. Supported PDF/image originals can subsequently be processed through the browser vision action: PDFium renders their physical pages, and Kimi reads the resulting images. Unsupported files still require another readable representation or manual entry.
+Unreadable and unsupported attachments are retained with a visible problem instead of disappearing. A raw API upload does not acquire a hidden OCR service. Supported PDF/image originals can subsequently be processed through the browser vision action: PDFium renders their physical pages, and GLM reads the resulting images. Unsupported files still require another readable representation or manual entry.
 
 There is no Gmail OAuth or synchronization implementation yet. Setting an inbox address records intended configuration; it does not connect the inbox. Generic connector scaffolding is also not a Gmail integration.
 
@@ -262,7 +262,7 @@ There is no Gmail OAuth or synchronization implementation yet. Setting an inbox 
 
 Email matching adds a different relationship from document grouping. An email with two shipments' attachments may appear in two cases; a follow-up without attachments may belong to one existing case. Automatically moving every attachment to one AI-selected case would lose this distinction.
 
-[lib/email-shipment-ai.ts](../lib/email-shipment-ai.ts) builds a bounded text context from email subjects/bodies and current document identifiers. It asks the fixed server-configured Kimi API for structured proposals, then checks exact email quotations, document quotations, reference roles, source versions and ambiguity. A distinct reliable House B/L or unqualified B/L reference, or an invoice reference supported by a different contract/container reference, can justify automatic linking. Weak or ambiguous evidence produces a review suggestion. Shared senders and conversational similarity alone do not justify a link. Historical sample collections and completed cases are excluded from new AI matching.
+[lib/email-shipment-ai.ts](../lib/email-shipment-ai.ts) builds a bounded text context from email subjects/bodies and current document identifiers. It asks the fixed server-configured GLM API for structured proposals, then checks exact email quotations, document quotations, reference roles, source versions and ambiguity. A distinct reliable House B/L or unqualified B/L reference, or an invoice reference supported by a different contract/container reference, can justify automatic linking. Weak or ambiguous evidence produces a review suggestion. Shared senders and conversational similarity alone do not justify a link. Historical sample collections and completed cases are excluded from new AI matching.
 
 [lib/email-grouping.ts](../lib/email-grouping.ts) saves these proposals as `EmailShipmentMatch` records. A source replacement or move can make a match stale. A reviewer confirms or rejects one suggestion at a time; later model runs preserve that human decision. The action changes correspondence associations, not declaration values, document assignment or approval status. This is why there is a separate match record instead of treating the model response as a request to merge cases.
 
@@ -270,14 +270,14 @@ Email matching adds a different relationship from document grouping. An email wi
 
 ## 6. Extraction creates evidence, not decisions
 
-New automated document facts come from [lib/kimi.ts](../lib/kimi.ts). It asks the model for a bounded structured response and validates each source-linked proposal. Kimi reads PDF/image content visually and reads supported text-based files from their prepared source text.
+New automated document facts come from [lib/kimi.ts](../lib/kimi.ts). It asks the model for a bounded structured response and validates each source-linked proposal. GLM reads PDF/image content visually and reads supported text-based files from their prepared source text.
 
-[lib/extraction.ts](../lib/extraction.ts) contains shared normalization and helpers that read saved document-type metadata. The historical heuristic reader exists only in test fixtures. Uploads and explicit transcriptions wait for Kimi; provider failure never activates a local field parser.
+[lib/extraction.ts](../lib/extraction.ts) contains shared normalization and helpers that read saved document-type metadata. The historical heuristic reader exists only in test fixtures. Uploads and explicit transcriptions wait for GLM; provider failure never activates a local field parser.
 
 | Function or structure | Responsibility |
 | --- | --- |
-| Kimi request and response schemas | Bound the request and define permitted facts and evidence. |
-| Page reading and type metadata | Preserve what Kimi read and distinguish invoice, packing and transport pages. |
+| GLM request and response schemas | Bound the request and define permitted facts and evidence. |
+| Page reading and type metadata | Preserve what GLM read and distinguish invoice, packing and transport pages. |
 | `normalizeValue` | Apply limited, recorded formatting transformations. |
 | Exact-decimal integrity helpers | Check unambiguous numbers and arithmetic without inventing values. |
 | Shipment reconciliation | Compare the same fact across its sources before filling the draft. |
@@ -286,7 +286,7 @@ Normalization is deliberately narrower than correction. Removing repeated whites
 
 Transport roles need special handling. A carrier's consignee is not necessarily the commercial importer. House B/L and master B/L parties and identifiers are kept separate. Packing package counts also must not silently become commercial goods quantities. The extraction tests contain counterexamples for these distinctions.
 
-The application does not infer customs procedure, tax or tariff decisions. Explicit source HS digits or an explicit two-letter origin token can be retained in an unverified declaration draft; neither is a validated customs classification. Kimi's allowed extraction fields exclude those customs decisions. Full country names are not silently translated into country codes, and a supplier's statement is not proof of regulatory eligibility.
+The application does not infer customs procedure, tax or tariff decisions. Explicit source HS digits or an explicit two-letter origin token can be retained in an unverified declaration draft; neither is a validated customs classification. Explicitly printed customs fields may be retained without inference. A supported explicit country name can map to its code through the application's reference table, with the original reading and normalization reason retained. A supplier's statement is not proof of regulatory eligibility.
 
 ## 7. The workflow engine
 
@@ -300,7 +300,7 @@ The API remains responsible for authenticating the actor. Passing an `Actor` to 
 
 `groupShipmentDocuments` in [lib/shipment-grouping.ts](../lib/shipment-grouping.ts) receives profiles for the complete batch and existing open cases. Each profile contains reference sets, commercial/transport context, container sets and explicit container/seal pairs. It links strongly supported matches, combines their evidence, and checks again. This lets a packing document connect an invoice to a bill without depending on upload order.
 
-Different House B/L numbers or conflicting unqualified B/L numbers prevent an automatic join. A common master bill, contract, sender, vessel or company alone is insufficient. Low-confidence identifiers cannot independently merge cases. Grounded Kimi facts can corroborate other evidence, but do not override those rules. A clear evidence-linked group may set `groupingConfirmed` automatically; an ambiguous group stays separate and requires a person's confirmation. That flag records settled grouping, not human sign-off on every declaration field.
+Different House B/L numbers or conflicting unqualified B/L numbers prevent an automatic join. A common master bill, contract, sender, vessel or company alone is insufficient. Low-confidence identifiers cannot independently merge cases. Grounded GLM facts can corroborate other evidence, but do not override those rules. A clear evidence-linked group may set `groupingConfirmed` automatically; an ambiguous group stays separate and requires a person's confirmation. That flag records settled grouping, not human sign-off on every declaration field.
 
 `regroupDocuments` in the engine applies the result. Merged cases retain their history and a `mergedInto` pointer rather than disappearing. An existing shipment selected in the UI does not force unrelated new attachments into it. Manual move/merge operations remain available for an explicit reviewer decision.
 
@@ -377,8 +377,8 @@ The workspace JSON is capped at 1.8 MB. Storing the whole aggregate is simple an
 | `GET /api/auth/status` | Return safe mode/configuration/session information. |
 | `POST /api/auth/login`, `/refresh`, `/logout` | Hosted email/password session lifecycle. |
 | `POST /api/auth/reset-password`, `/verify`, `/password` | Hosted invitation/recovery and password setup flow. |
-| `GET /api/ai/status` | Report whether Kimi settings exist; it is not a live provider health test. |
-| `POST /api/ai/extract` | Bounded selected-page Kimi extraction with stored text and available vision evidence. |
+| `GET /api/ai/status` | Report whether GLM settings exist; it is not a live provider health test. |
+| `POST /api/ai/extract` | Bounded selected-page GLM extraction with stored text and available vision evidence. |
 | `POST /api/ai/vision-page` | Validate and privately store a page image bound to an authenticated original/version. |
 
 Most `route.ts` files are short adapters. [server.ts](../lib/server.ts) centralizes private response headers, error handling, bounded JSON reading, membership, revision checks and persistence. [server-validation.ts](../lib/server-validation.ts) centralizes strict Zod schemas and file checks. Invalid input gets a controlled error rather than a stack trace with internal details.
@@ -409,15 +409,15 @@ Authentication answers **who are you?** Authorization answers **may you access t
 
 Email/password can be an appropriate design with a configured provider, HTTPS, membership controls, throttling and recovery safeguards. This source contains those mechanisms, but a live provider, email delivery and deployed session behavior still require end-to-end testing. The current local mode makes a different tradeoff: convenient single-user access protected by the local machine boundary.
 
-## 11. Kimi integration and its trust boundary
+## 11. GLM integration and its trust boundary
 
-The current pipeline uses **Kimi as its only document extractor**. PDFium only prepares page images; PDF.js and OCR are removed from the active path. Read [Kimi vision extraction](kimi-vision.md) for the full beginner explanation, data flow and administrator setup. The owner supplies the server key; users have no API-provider settings. An omitted model uses `kimi-k2.6`, while a model override must support vision for PDF/image requests.
+The current pipeline uses **GLM as its only document extractor**. PDFium only prepares page images; PDF.js and OCR are removed from the active path. Read [GLM vision extraction](kimi-vision.md) for the full beginner explanation, data flow and administrator setup. The owner supplies the server key; users have no API-provider settings. The live model is `glm-5.3-flash`, with low reasoning effort and no Moonshot fallback. `kimi.ts` and related internal names are preserved for stored-evidence compatibility.
 
-[lib/client-vision.ts](../lib/client-vision.ts) downloads the authenticated original, verifies its SHA-256 fingerprint, and renders physical pages using PDFium without reading a PDF text layer. Images are uploaded in bounded form to [lib/server-vision.ts](../lib/server-vision.ts). [lib/vision.ts](../lib/vision.ts) checks JPEG dimensions and derives storage keys tied to the workspace, document version, original fingerprint, page and image fingerprint. The browser must remain open during this workflow.
+[lib/client-vision.ts](../lib/client-vision.ts) downloads the authenticated original, verifies its SHA-256 fingerprint, and renders physical pages using PDFium without reading a PDF text layer. Images are uploaded in bounded form to [lib/server-vision.ts](../lib/server-vision.ts). [lib/vision.ts](../lib/vision.ts) checks JPEG dimensions and derives storage keys tied to the workspace, document version, original fingerprint, page and image fingerprint. This manual/hosted browser path needs an open tab. The local automatic reader uses PDFium and Sharp independently and continues while the local server is running.
 
-[lib/server-kimi.ts](../lib/server-kimi.ts) checks identity, membership, revision, active document and case state. It loads the private page images and server-only key, then applies the workspace request limit. [lib/kimi.ts](../lib/kimi.ts) sends those images to the fixed endpoint `https://api.moonshot.ai/v1/chat/completions`. There is no arbitrary external-image URL supplied by the browser.
+[lib/server-kimi.ts](../lib/server-kimi.ts) checks identity, membership, revision, active document and case state. It loads the private page images and server-only key, then applies the workspace request limit. [lib/kimi.ts](../lib/kimi.ts) sends those images to the fixed endpoint `https://api.z.ai/api/paas/v4/chat/completions`. There is no arbitrary external-image URL supplied by the browser.
 
-Kimi is asked to return page readings, clarity, document types, factual header values and commercial goods proposals as JSON. Goods cells share a `rowIndex` only when they belong to the same physical row. The prompt treats printed instructions as untrusted document content and excludes customs procedure, tax and tariff decisions. The model receives no action tools. Runtime code additionally checks:
+GLM is asked to return page readings, clarity, document types, factual header values and commercial goods proposals as JSON. Goods cells share a `rowIndex` only when they belong to the same physical row. The prompt treats printed instructions as untrusted document content and prohibits inferring customs procedure, tax or tariff decisions; only explicit source fields are permitted. The model receives no action tools. Runtime code additionally checks:
 
 1. The provider response is bounded, complete and valid JSON.
 2. Each proposal fits the schema and allowed field set.
@@ -430,11 +430,11 @@ A clear, source-backed result can fill the draft automatically without an indivi
 
 The general workspace action endpoint cannot accept arbitrary caller-created AI candidates. The specialized extraction endpoint constructs the internal action after validation. Source-version and workspace-revision checks prevent stale output from silently overwriting newer evidence or review decisions.
 
-Each request is bounded to 5 pages, 24,000 text characters, 100 proposals and 6,000 output tokens. Each page raster is capped at 2,600 pixels per side and 1.5 MiB. Six provider calls are allowed per workspace per minute. Successful batches save their completed pages; a later failure or rate limit can leave a partial document, which the extraction action can resume. Processing completion is not a field-accuracy claim.
+Each request is bounded to 5 pages, 24,000 text characters, 500 proposals and 24,000 output tokens. Visual processing uses one page per call; up to five selected text pages may share a request. Each page raster is capped at 2,600 pixels per side and 1.5 MiB. Six provider calls are allowed per workspace per minute. Successful batches save their completed pages; a later failure or rate limit can leave a partial document, which the extraction action can resume. Processing completion is not a field-accuracy claim.
 
-Without a key, originals are saved and wait for Kimi. There is no PDF text/OCR/deterministic fallback. Provider errors preserve originals and completed batches. Timeouts are not blindly retried; the provider may have already charged for work in progress. A configured status and mocked tests do not establish live provider access or accuracy. No model result can approve the draft, send email or transmit a customs declaration.
+Without a key, originals are saved and wait for GLM. There is no PDF text/OCR/deterministic fallback. Provider errors preserve originals and completed batches. Timeouts are not blindly retried; the provider may have already charged for work in progress. A configured status and mocked tests do not establish live provider access or accuracy. No model result can approve the draft, send email or transmit a customs declaration.
 
-Email matching uses the same server key and fixed endpoint in a separate text request. Its context contains saved email text and shipment-reference evidence, including references produced during vision extraction; it does not resend all PDFs. The planner's proposals pass strict source checks before the server creates an internal match action. A single pass is limited to eight emails, and omissions are reported rather than presented as a complete inbox review. At implementation time no Kimi key was configured, so matching checks used controlled provider responses; live Kimi accuracy still requires evaluation against broker-reviewed correspondence.
+Email matching uses the same server key and fixed endpoint in a separate text request. Its context contains saved email text and shipment-reference evidence, including references produced during vision extraction; it does not resend all PDFs. The planner's proposals pass strict source checks before the server creates an internal match action. A single pass is limited to eight emails, and omissions are reported rather than presented as a complete inbox review. Matching checks use controlled provider responses. Document-image benchmark scores do not measure email-matching accuracy, which requires broker-reviewed correspondence.
 
 ## 12. React screen state and saving
 
@@ -552,7 +552,7 @@ This inventory groups repeated framework wrappers and supplied assets while iden
 
 `npm run typecheck` catches type inconsistencies. `npm run build` checks that the integrated production bundles can be produced. The API smoke script checks real HTTP/storage/workflow behavior using synthetic records. Browser checks inspect interaction and presentation. These forms of validation complement one another.
 
-Passing tests do not establish accuracy on unseen suppliers. The earlier private-sample check covered selected values, not every field or every packing page. Live Supabase, Gmail, Kimi and ECUS behavior also cannot be established by mocked or synthetic tests. [validation.md](validation.md) records those boundaries.
+Passing tests do not establish accuracy on unseen suppliers. The earlier private-sample check covered selected values, not every field or every packing page. Live Supabase, Gmail, GLM and ECUS behavior also cannot be established by mocked or synthetic tests. [validation.md](validation.md) records those boundaries.
 
 ## 18. Tradeoffs and a practical reading order
 
@@ -699,7 +699,7 @@ The new `build/worker.ts` delegates requests to the framework. `vite.config.ts` 
 
 The declaration catalogue, exact decimal arithmetic, evidence checks, audit history, upload safeguards and database migrations remain. They enforce behavior the product needs. The VNACCS coverage screen was redundant navigation; the field definitions it displayed are still needed internally.
 
-The Kimi settings card was removed from ordinary use. The server owns its key and model configuration. The subsequent shipment workflow runs Kimi after upload when configured, while retaining the per-document extraction action for unfinished or selected pages. Chapter 11 and [the vision guide](kimi-vision.md) explain its image/text evidence boundary; Chapter 21 explains shipment grouping.
+The GLM settings card was removed from ordinary use. The server owns its key and model configuration. The subsequent shipment workflow runs GLM after upload when configured, while retaining the per-document extraction action for unfinished or selected pages. Chapter 11 and [the vision guide](kimi-vision.md) explain its image/text evidence boundary; Chapter 21 explains shipment grouping.
 
 ### What refactoring does not mean
 
@@ -717,9 +717,9 @@ flowchart TD
   Prepare --> Upload[One batch request]
   Upload --> Preserve[Validate and save the complete original batch]
   Preserve --> Group[Compare the batch with open shipments]
-  Preserve --> AI{Owner configured Kimi?}
+  Preserve --> AI{Owner configured GLM?}
   AI -->|Yes| Render[Render authenticated original pages]
-  AI -->|No| Wait[Save originals and wait for Kimi]
+  AI -->|No| Wait[Save originals and wait for GLM]
   Render --> Proposals[Bounded image and text proposals]
   Proposals --> Group
   Group -->|Clear relationship| Combine[Reconcile all active shipment evidence]
@@ -737,7 +737,7 @@ flowchart TD
 
 | Code | Receives | Produces | Why it is separate |
 | --- | --- | --- | --- |
-| `prepareIntakeFile` in [client-intake.ts](../lib/client-intake.ts) | A selected file | Page metadata, supported source-file text and attachment information | PDFium rendering needs browser capabilities; Kimi performs field extraction. |
+| `prepareIntakeFile` in [client-intake.ts](../lib/client-intake.ts) | A selected file | Page metadata, supported source-file text and attachment information | PDFium rendering needs browser capabilities; GLM performs field extraction. |
 | `parseIntakeMetadata` in [intake-metadata.ts](../lib/intake-metadata.ts) | Untrusted upload metadata | Validated, correctly matched file/attachment metadata | Runtime checks protect the server even if someone bypasses the website. |
 | `upload` in [server-upload.ts](../lib/server-upload.ts) | One multipart HTTP request | One committed workspace response or an error | Authentication, original storage and revision checks belong at the request boundary. |
 | [client-vision.ts](../lib/client-vision.ts) and [server-kimi.ts](../lib/server-kimi.ts) | Authenticated original pages, stored text and owner configuration | Grounded candidates and completed-page progress | Rendering, provider limits and failures remain separate from shipment matching rules. |
@@ -746,7 +746,7 @@ flowchart TD
 | `reviewQuestion` in [review-questions.ts](../lib/review-questions.ts) | A current issue and its active evidence | Confirm, choose, missing or general review presentation | The question wording should reflect what is actually known. |
 | `applyCorrespondenceAction` in [shipment-correspondence.ts](../lib/shipment-correspondence.ts) | Selected unresolved issue IDs or a draft edit | A local message draft and audit entry | Preparing a question is separate from sending a message. |
 
-In AI-training terms, Kimi proposes annotations for page images and document text. Ordinary code then checks those annotations and determines how they fit into the shipment. A model-generated identifier does not directly execute a merge, save a human review or submit a customs form.
+In AI-training terms, GLM proposes annotations for page images and document text. Ordinary code then checks those annotations and determines how they fit into the shipment. A model-generated identifier does not directly execute a merge, save a human review or submit a customs form.
 
 ### What “one atomic batch” means here
 
@@ -815,7 +815,7 @@ The corrected design gives each decision a specific scope:
 - `expandedReviewIssueId` keeps the selected question if it still exists, otherwise opens the next pending question. An intentional collapse is still respected.
 - `review-history.ts` stores a snapshot of the question that was answered, the resulting status, reviewer, time and reason. The folded completed section reads this history without using it to approve current issues.
 
-A useful comparison with AI training is annotation status: inspecting one uncertain label should not mark every label in the batch as verified. The row or field ID is the boundary of the annotation decision. High-confidence, consistent source facts can fill the draft without generating a routine question. Missing facts, contradictory evidence and uncertain Kimi readings still need attention; confidence alone is not proof that a value is legally correct.
+A useful comparison with AI training is annotation status: inspecting one uncertain label should not mark every label in the batch as verified. The row or field ID is the boundary of the annotation decision. High-confidence, consistent source facts can fill the draft without generating a routine question. Missing facts, contradictory evidence and uncertain GLM readings still need attention; confidence alone is not proof that a value is legally correct.
 
 Earlier explicit field confirmations can be recovered from the audit log when their current evidence and saved decision still match. This preserves the user's previous decisions without inventing reviews for data the system autofilled. If changed evidence makes a question pending again, it appears in the pending list rather than being presented as currently completed.
 

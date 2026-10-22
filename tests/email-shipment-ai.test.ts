@@ -138,6 +138,20 @@ test('timeout aborts once and provider exceptions are sanitized without automati
   await assert.rejects(() => planEmailShipmentMatches(config, fixture(), ['email-1'], { fetch: async () => { throw new Error(config.apiKey); } }), (error: unknown) => error instanceof KimiError && error.status === 502 && !error.message.includes(config.apiKey));
 });
 
+test('upstream email matching limits retain sanitized HTTP status without enabling queue retries', async () => {
+  let calls = 0;
+  let cancelled = false;
+  await assert.rejects(planEmailShipmentMatches(config, fixture(), ['email-1'], { fetch: async () => {
+    calls++;
+    return new Response(new ReadableStream({
+      cancel() { cancelled = true; throw new Error('private cancellation detail'); },
+    }), { status: 429 });
+  } }), error => error instanceof KimiError && error.status === 502
+    && error.message.includes('HTTP 429') && !error.message.includes('private'));
+  assert.equal(calls, 1);
+  assert.equal(cancelled, true);
+});
+
 test('nonempty provider output with no grounded associations fails without a completed-check result', async () => {
   const state = fixture(); const before = JSON.stringify(state); let calls = 0;
   await assert.rejects(() => planEmailShipmentMatches(config, state, ['email-1'], { fetch: async () => { calls++; return reply([match([evidence({ emailQuote: `secret invented source ${config.apiKey}` })])]); } }), (error: unknown) => error instanceof KimiError && error.status === 502 && /source evidence checks/.test(error.message) && !error.message.includes(config.apiKey) && !error.message.includes('secret invented source'));

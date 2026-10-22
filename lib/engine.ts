@@ -1,3 +1,4 @@
+import { DEFAULT_DOCUMENT_MODEL, ZAI_ENDPOINT } from './ai-provider.ts';
 import { documentSourceReady } from './source-completeness.ts';
 import { clientMemorySaveAction, dismissOrRevokeClientMemory, getClientIdentity, rememberClientCorrection } from './client-memory.ts';
 import { applyEmailGroupingAction } from './email-grouping.ts';
@@ -470,10 +471,10 @@ function preparedDocument(
     // result. Validate each source page once without imposing the per-call limit.
     const readings = upload.aiPageReadings;
     if (readings.length > source.pages.length || new Set(readings.map(reading => reading.page)).size !== readings.length)
-      throw new Error("Kimi intake page readings must identify distinct source pages.");
+      throw new Error("AI intake page readings must identify distinct source pages.");
     for (const reading of readings) {
       const page = source.pages.find(page => page.page === reading.page);
-      if (!page) throw new Error("Kimi intake page reading refers to an absent source page.");
+      if (!page) throw new Error("AI intake page reading refers to an absent source page.");
       validateKimiPageReadings([page], [reading], true);
       page.documentType = reading.documentType;
       page.aiReadability = reading.readability;
@@ -496,8 +497,8 @@ function preparedDocument(
         : source.pages.every(page => page.aiReadability === "clear") ? "extracted" : "needs_transcription";
       if (source.extractionStatus === "extracted") delete source.extractionError;
       else source.extractionError = source.extractionStatus === "pending_ai"
-        ? "Kimi has not finished reading every page."
-        : "Kimi could not clearly read every page. Retry the source or supply a clearer copy.";
+        ? "AI has not finished reading every page."
+        : "AI could not clearly read every page. Retry the source or supply a clearer copy.";
     }
   }
   return {
@@ -995,13 +996,13 @@ export function getIssues(state: WorkspaceState, caseId?: string): Issue[] {
     for (const d of docs) {
       if (d.referenceOnly) continue;
       if (d.extractionPipeline !== "kimi") {
-        add(`kimi-original-${d.id}`, "document", "Cần Kimi đọc bản gốc", "Dữ liệu cũ chưa được Kimi đọc. Ứng dụng sẽ đọc lại bản gốc khi Kimi được cấu hình; chưa yêu cầu bổ sung thông tin từ nội dung chưa đọc.", undefined, [], [d.id]);
+        add(`kimi-original-${d.id}`, "document", "Cần AI đọc bản gốc", "Dữ liệu cũ chưa được AI đọc. Ứng dụng sẽ đọc lại bản gốc khi AI được cấu hình; chưa yêu cầu bổ sung thông tin từ nội dung chưa đọc.", undefined, [], [d.id]);
         continue;
       }
       const clearlySupplemental = sourceRead(d) && d.pages.every(page => page.documentType === "other");
       if (d.extractionStatus === "pending_ai") {
-        add(`document-${d.id}`, "document", "Đang chờ Kimi đọc chứng từ",
-          d.aiError || "Kimi chưa đọc xong chứng từ này. Chỉ kiểm tra thông tin còn thiếu sau khi đã xử lý đầy đủ bộ chứng từ.",
+        add(`document-${d.id}`, "document", "Đang chờ AI đọc chứng từ",
+          d.aiError || "AI chưa đọc xong chứng từ này. Chỉ kiểm tra thông tin còn thiếu sau khi đã xử lý đầy đủ bộ chứng từ.",
           undefined, [], [d.id]);
         continue;
       }
@@ -1011,9 +1012,9 @@ export function getIssues(state: WorkspaceState, caseId?: string): Issue[] {
           "document",
           d.extractionStatus === "needs_transcription" ||
             d.pages.some(page => page.aiReadability === "uncertain") || d.aiRejectedPages?.length
-            ? "Kimi chưa đọc rõ chứng từ"
+            ? "AI chưa đọc rõ chứng từ"
             : "Chưa đọc được chứng từ",
-          d.extractionError || d.aiError || "Kimi chưa đọc rõ tất cả các trang. Thử đọc lại hoặc cung cấp bản rõ hơn.",
+          d.extractionError || d.aiError || "AI chưa đọc rõ tất cả các trang. Thử đọc lại hoặc cung cấp bản rõ hơn.",
           undefined,
           [],
           [d.id],
@@ -1463,8 +1464,8 @@ export function applyAction(
         document.pages.every(page => page.aiReadability === "clear") ? "extracted" : "needs_transcription";
       if (document.extractionStatus === "extracted") delete document.extractionError;
       else document.extractionError = document.extractionStatus === "pending_ai"
-        ? "Kimi has not finished reading every page."
-        : "Kimi could not clearly read every page. Retry the source or supply a clearer copy.";
+        ? "AI has not finished reading every page."
+        : "AI could not clearly read every page. Retry the source or supply a clearer copy.";
     }
     // Progress means the page was processed, not that every model interpretation
     // passed grounding. Keep rejected-page warnings until those pages are rerun cleanly.
@@ -1537,12 +1538,12 @@ export function applyAction(
         state,
         c,
         actor,
-        "Có đề xuất Kimi mới; cần rà soát lại các trường bị ảnh hưởng.",
+        "Có đề xuất AI mới; cần rà soát lại các trường bị ảnh hưởng.",
       );
       const previousCandidates = structuredClone(existing);
       if (retired.length) {
         state.candidates = state.candidates.filter(candidate => !retiredIds.has(candidate.id));
-        audit(state, actor, "ai_source_evidence_replaced", "Kimi reread these pages; prior machine evidence is retained in this audit record.", {
+        audit(state, actor, "ai_source_evidence_replaced", "AI reread these pages; prior machine evidence is retained in this audit record.", {
           caseId: c.id, before: retired, after: fresh.map(candidate => candidate.id),
         });
       }
@@ -1573,12 +1574,12 @@ export function applyAction(
       state,
       actor,
       "ai_header_proposals_received",
-      "Moonshot đã đọc các trang nguồn được chọn và lưu đề xuất kèm bằng chứng. Dữ liệu không tự được duyệt và không phải quyết định hải quan.",
+      "AI đã đọc các trang nguồn được chọn và lưu đề xuất kèm bằng chứng. Dữ liệu không tự được duyệt và không phải quyết định hải quan.",
       {
         caseId: c.id,
         after: {
-          provider: "Moonshot International",
-          endpoint: KIMI_ENDPOINT,
+          provider: action.model === DEFAULT_DOCUMENT_MODEL ? "Z.ai" : "Moonshot International",
+          endpoint: action.model === DEFAULT_DOCUMENT_MODEL ? ZAI_ENDPOINT : KIMI_ENDPOINT,
           model: action.model,
           scope: visionEvidence.length ? "shipment_facts_and_goods_vision" : "shipment_facts_and_goods_text",
           visionPages: visionEvidence.map(page => page.page),
@@ -2105,7 +2106,7 @@ export function applyAction(
     if (document.extractionPipeline === "kimi") {
       if (!["unsupported", "failed"].includes(document.extractionStatus)) {
         document.extractionStatus = "pending_ai";
-        document.extractionError = "Kimi must read the current document version.";
+        document.extractionError = "AI must read the current document version.";
       }
       for (const page of document.pages) delete page.aiReadability;
     }
@@ -2159,7 +2160,7 @@ export function applyAction(
     const assessment = assessExtraction(document.pages);
     document.extractionStatus = document.extractionPipeline === "kimi" ? "pending_ai" : assessment.extractionStatus;
     document.extractionError = document.extractionPipeline === "kimi"
-      ? "Kimi must read the current document version." : assessment.extractionError;
+      ? "AI must read the current document version." : assessment.extractionError;
     if (document.extractionPipeline === "kimi") for (const page of document.pages) delete page.aiReadability;
     invalidate(state, c, actor, "Nội dung chép từ chứng từ thay đổi.");
     c.groupingConfirmed = false;

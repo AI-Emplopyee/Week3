@@ -212,8 +212,8 @@ export function ShipmentMessages({
               {waiting && (
                 <p className="email-draft-state">
                   {say(
-                    "Đang chờ Kimi đọc đủ chứng từ hiện hành. Nội dung này sẽ được đối chiếu lại trước khi có thể duyệt.",
-                    "Waiting for Kimi to finish the current documents. These questions will be checked again before the draft can be approved.",
+                    "Đang chờ AI đọc đủ chứng từ hiện hành. Nội dung này sẽ được đối chiếu lại trước khi có thể duyệt.",
+                    "Waiting for AI to finish the current documents. These questions will be checked again before the draft can be approved.",
                   )}
                 </p>
               )}

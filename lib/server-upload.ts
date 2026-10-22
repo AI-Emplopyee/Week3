@@ -1,3 +1,4 @@
+import { documentAiConfiguration } from '@/lib/ai-provider';
 import { env } from 'cloudflare:workers';
 import PostalMime from 'postal-mime';
 import { boundedPdfPages } from '@/lib/pdf-pages';
@@ -57,7 +58,7 @@ async function readPages(bytes: Uint8Array, extension: string, metadata?: Intake
   return [];
 }
 function pendingExtraction(extension: string, pages: SourcePage[]): Pick<UploadedDocument, 'extractionStatus' | 'extractionError'> {
-  if (!['pdf', 'png', 'jpg', 'jpeg', 'webp', 'txt', 'csv', 'xml'].includes(extension)) return { extractionStatus: 'unsupported', extractionError: 'Original preserved. Convert this format to PDF or a supported image for Kimi extraction.' };
+  if (!['pdf', 'png', 'jpg', 'jpeg', 'webp', 'txt', 'csv', 'xml'].includes(extension)) return { extractionStatus: 'unsupported', extractionError: 'Original preserved. Convert this format to PDF or a supported image for AI extraction.' };
   if (!pages.length) return { extractionStatus: 'failed', extractionError: 'The original pages could not be opened. Provide an unlocked, readable PDF or supported image.' };
   return { extractionStatus: 'pending_ai' };
 }
@@ -137,7 +138,7 @@ export async function upload(request: Request): Promise<Response> {
       if (metadata[index].attachments?.some(item => !parsed.attachments[item.index] || (parsed.attachments[item.index].filename || 'unnamed-attachment') !== item.name)) throw new ApiError(400, 'Attachment metadata does not match this email.');
       const emailId = `email_${crypto.randomUUID()}`;
       const date = parsed.date ? new Date(parsed.date) : new Date();
-      const email: EmailRecord = { text: emailBodyText(parsed), inReplyTo: parsed.inReplyTo?.slice(0, 1000), references: parsed.references?.split(/\s+/).filter(Boolean).slice(0, 50).map(value => value.slice(0, 1000)), aiGroupingStatus: kimiStatus({ apiKey: env.MOONSHOT_API_KEY, model: env.MOONSHOT_MODEL }).configured ? 'partial' : 'unavailable', id: emailId, messageId, sender: (parsed.from?.address || parsed.from?.name || 'Unknown sender').slice(0, 1000), subject: (parsed.subject || name).slice(0, 1000), receivedAt: Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString(), originalName: name, blobKey: await writeOriginal(emailId, bytes, mime), documentIds: [], sha256 };
+      const email: EmailRecord = { text: emailBodyText(parsed), inReplyTo: parsed.inReplyTo?.slice(0, 1000), references: parsed.references?.split(/\s+/).filter(Boolean).slice(0, 50).map(value => value.slice(0, 1000)), aiGroupingStatus: kimiStatus(documentAiConfiguration(env)).configured ? 'partial' : 'unavailable', id: emailId, messageId, sender: (parsed.from?.address || parsed.from?.name || 'Unknown sender').slice(0, 1000), subject: (parsed.subject || name).slice(0, 1000), receivedAt: Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString(), originalName: name, blobKey: await writeOriginal(emailId, bytes, mime), documentIds: [], sha256 };
       // Replies belong to the email record. Only actual attachments enter document
       // grouping; a body-only message must not manufacture a provisional shipment.
       for (const [attachmentIndex, attachment] of parsed.attachments.entries()) {
@@ -165,12 +166,12 @@ export async function upload(request: Request): Promise<Response> {
     if (!documents.length && !emails.length) return json({ ...response(context), notice: 'These original documents are already in the workspace. No duplicates were created.' });
     // PDF/image vision runs after originals are committed and grouped. Do not pay
     // for a separate text-only pass that cannot see tables or OCR errors.
-    const aiConfigured = kimiStatus({ apiKey: env.MOONSHOT_API_KEY, model: env.MOONSHOT_MODEL }).configured;
+    const aiConfigured = kimiStatus(documentAiConfiguration(env)).configured;
     for (const document of documents.filter(isVisualDocument)) {
       document.aiStatus = aiConfigured ? 'partial' : 'unavailable';
       if (aiConfigured) document.aiError = 'Page images are ready to be processed after upload.';
     }
-    if (env.AICD_AUTH_MODE !== 'local') await enrichIntakeWithKimi(documents.filter(document => !isVisualDocument(document) && document.extractionStatus === 'pending_ai' && !document.referenceOnly && !context.state.documents.some(existing => existing.sha256 === document.sha256)), { apiKey: env.MOONSHOT_API_KEY, model: env.MOONSHOT_MODEL }, {
+    if (env.AICD_AUTH_MODE !== 'local') await enrichIntakeWithKimi(documents.filter(document => !isVisualDocument(document) && document.extractionStatus === 'pending_ai' && !document.referenceOnly && !context.state.documents.some(existing => existing.sha256 === document.sha256)), documentAiConfiguration(env), {
       allowRequest: () => consumeRateLimit(context.db, `kimi-extract:${context.state.id}`, 6, 60),
     });
     const result = await mutate(context, revision, documentId ? { type: 'replace_document', documentId, document: documents[0] } : { type: 'intake', documents, targetCaseId, sourceCollection, emails });
@@ -182,7 +183,7 @@ export async function upload(request: Request): Promise<Response> {
         // turn a successful upload into an apparently failed/duplicate upload.
         if (error instanceof ApiError && error.status === 409) return json({ ...response(context), notice: 'Email originals were saved. The workspace changed during matching; review current records before retrying.' });
         const reason = error instanceof ApiError && error.status === 429
-          ? 'The Kimi request limit was reached. Resume email matching in one minute.'
+          ? 'The AI request limit was reached. Resume email matching in one minute.'
           : 'Email originals were saved, but AI shipment matching could not finish. Resume matching from the email section.';
         try { return json(await mutate(context, context.state.revision, { type: 'email_matching_status', emailIds: emails.map(email => email.id), status: 'partial', reason })); }
         catch { return json({ ...response(context), notice: reason }); }

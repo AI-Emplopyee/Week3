@@ -24,11 +24,11 @@ Saved records and original files live in **`.aicd-local/state/`**. Keep this dir
 | Area | Implemented now | Next product step |
 | --- | --- | --- |
 | Documents | One batch intake for PDF/image/text/CSV and saved `.eml`; shared browser file preparation, original files, duplicate detection and evidence-based grouping | Live Gmail synchronization |
-| Extraction | Kimi-only extraction from page images or structured file text; source-linked header and commercial goods candidates | Broader layout evaluation against broker-reviewed answers |
+| Extraction | GLM-5.3-Flash extraction from page images or structured file text; source-linked header and commercial goods candidates | Broader layout evaluation against broker-reviewed answers |
 | Draft | ECUS IDA three-form editor from supplied screenshots; source-backed autofill, required-field questions, all 25 goods columns and manual edits | Broader source-layout evaluation against broker-reviewed examples |
 | Review | Guide-based source reconciliation, extraction traces, and targeted questions only for unresolved information | Wider field coverage and broker-calibrated uncertainty thresholds |
 | Client memory | Explicit human corrections to stable importer details; matching-client suggestions with apply, dismiss and stop-suggesting controls | Evaluate additional reusable fields separately from transaction-specific facts |
-| Messages | Imported `.eml` messages, Kimi shipment matching, automatic consolidated question drafts, preserved edits and explicit draft approval | Outgoing delivery, live Gmail retrieval and timed follow-ups |
+| Messages | Imported `.eml` messages, GLM shipment matching, automatic consolidated question drafts, preserved edits and explicit draft approval | Outgoing delivery, live Gmail retrieval and timed follow-ups |
 | Access | Local single-user mode; retained standalone Supabase password adapter with server authorization | Google sign-in, owner-approved access requests and persistent team sessions |
 | ECUS | Immutable reviewed snapshots and a deterministic **test-only** adapter | Actual connection and credentials collected at connection time |
 | Regulations | Explicitly not assessed | Versioned, verified regulations and code tables when provided |
@@ -40,27 +40,27 @@ Google sign-in, live Gmail OAuth/synchronization, outgoing email delivery, sched
 1. **Read the complete batch.** The browser prepares all selected files, including supported attachments inside saved emails, before submitting one intake request.
 2. **Group before filling.** The backend compares document references and corroborating facts across the batch and existing open shipments. Shared senders, vessels, contracts or master bills alone do not justify a merge. Ambiguous groups stay separate for confirmation.
 3. **Combine evidence.** Repeated totals are compared, never added. Commercial buyers/sellers stay separate from transport agents. A packing page listing one container can support a larger container set.
-4. **Fill the web draft.** Clear Kimi values populate supported declaration components with document/version/page/quote references. The supplied VNACCS guide selects the appropriate source for supported conflicts and maps explicit facts to specified codes. Unresolved conflicts and unreadable values remain questions. Unknown customs, location and tax codes are not invented.
+4. **Fill the web draft.** Clear AI values populate supported declaration components with document/version/page/quote references. The supplied VNACCS guide selects the appropriate source for supported conflicts and maps explicit facts to specified codes. Unresolved conflicts and unreadable values remain questions. Unknown customs, location and tax codes are not invented.
 5. **Prepare remaining questions automatically.** Once all active sources have been read, missing or unresolved form information is collected into one editable local email draft. A known sender is prefilled when unambiguous. The person reviews the recipient and message and approves the draft. This records approval inside AICD; outgoing email delivery is not implemented.
 6. **Preserve decisions when evidence arrives later.** Matching attachments join the existing shipment. Manual decisions remain, changed supporting evidence is flagged, and an approved shipment returns to review when its document set changes. Previous approval snapshots remain intact.
 
 The shipment list and its Documents section show the resulting groups. Review & draft contains Thông tin chung, Thông tin chung 2, and Danh sách hàng, with questions for missing or unclear information; Messages contains imported emails and local drafts. Settings contains only Gmail and ECUS connections.
 
-**Email matching** connects saved email subjects and body text to current shipment references, including replies with no attachments. When Kimi is configured, the local queue matches imported messages after document jobs finish, and rechecks them when their email content or shipment evidence changes. Each unchanged input is checked once, including a no-match result. Hosted intake attempts matching after originals are saved; the shipment list's **Match emails with AI** action processes existing messages in bounded batches of up to eight. Exact source quotations and reference checks determine which links can be saved automatically. Uncertain links get individual confirm/reject questions, and later AI runs preserve human decisions. Matching correspondence does not move all attachments together or approve a declaration. [Email matching architecture and limits](docs/email-shipment-grouping.md).
+**Email matching** connects saved email subjects and body text to current shipment references, including replies with no attachments. When GLM-5.3-Flash is configured, the local queue matches imported messages after document jobs finish, and rechecks them when their email content or shipment evidence changes. Each unchanged input is checked once, including a no-match result. Hosted intake attempts matching after originals are saved; the shipment list's **Match emails with AI** action processes existing messages in bounded batches of up to eight. Exact source quotations and reference checks determine which links can be saved automatically. Uncertain links get individual confirm/reject questions, and later AI runs preserve human decisions. Matching correspondence does not move all attachments together or approve a declaration. [Email matching architecture and limits](docs/email-shipment-grouping.md).
 
 [ECUS IDA form mapping and validation](docs/ecus-ida-forms.md).
 
 ## How PDF extraction works today
 
-Kimi is the document extractor. For PDFs, the server counts physical pages and the local background reader (or browser for explicit manual extraction) uses PDFium only to render images; it does not extract PDF text or run OCR. The server sends those page images to Kimi, which returns page readings and source-linked shipment facts. TXT, CSV and XML content also goes through Kimi to become form values. Other office formats need a PDF export for extraction. PDF.js, Tesseract, OCR workers and language assets are removed from the active pipeline.
+GLM-5.3-Flash is the live document extractor. For PDFs, the server counts physical pages and the local background reader (or browser for explicit manual extraction) uses PDFium only to render images; it does not extract PDF text or run OCR. The server sends those page images to GLM, which returns page readings and source-linked shipment facts. TXT, CSV and XML content also goes through GLM to become form values. Other office formats need a PDF export for extraction. PDF.js, Tesseract, OCR workers and language assets are removed from the active pipeline.
 
 Saved-email intake uses PostalMime in the browser to identify attachments and sends each supported attachment through the same preparation routine. The server parses the original email again, checks attachment metadata, and preserves the original message and files. Uploading a saved email is different from connecting a live Gmail account.
 
-The provider is fixed to Moonshot International with server-only `MOONSHOT_API_KEY`, default model `kimi-k2.6`, and an optional administrator `MOONSHOT_MODEL` override. End users cannot configure the provider or enter an API key. Each visual result retains its document version, page, quotation and image region. The application compares the combined shipment evidence before filling the draft. Clear, supported values without conflicts do not create a routine confirmation question; missing, unclear, contradictory or stale evidence still needs attention. No AI result approves or submits the declaration. [Extraction architecture and administrator setup](docs/kimi-vision.md).
+The live provider is fixed to Z.ai at `https://api.z.ai/api/paas/v4`, with server-only `ZAI_API_KEY` and `ZAI_MODEL=glm-5.3-flash`. Requests use low reasoning effort. Live extraction and email matching have no Moonshot fallback; a missing or invalid GLM configuration leaves work pending. End users cannot configure the provider or enter an API key. Each visual result retains its document version, page, quotation and image region. The application compares the combined shipment evidence before filling the draft. Clear, supported values without conflicts do not create a routine confirmation question; missing, unclear, contradictory or stale evidence still needs attention. No AI result approves or submits the declaration. [Current provider setup](docs/local-setup.md). The historical module names `kimi.ts` and `kimi-review.tsx` remain for compatibility with saved evidence; they do not select the live provider.
 
-Without the server key, originals are saved and wait for Kimi; there is no local OCR or heuristic-extraction fallback. In local mode, `npm run local` automatically reads pending originals from open import shipments, including attachments in imported `.eml` files, using two concurrent readers. Keep the local server running; the browser can close. Samples/source collections and reference-only documents are excluded from the automatic queue. Each page saves independently, jobs and timings persist in SQLite, and rate limits pause jobs for a minute. Failed provider/preparation requests require deliberate retry from the document action; completed reads with unresolved evidence are not repeatedly charged. Expired leases recover interrupted work after ten minutes; a process crash after a provider response but before saving can cause that page to be read again. Manual decisions are preserved when parallel results commit against the latest workspace revision. There is no live Gmail synchronization yet. Hosted standalone mode retains browser processing. A live synthetic extraction test covered all editable ECUS goods columns; broader supplier-layout accuracy remains unmeasured.
+Without the server key, originals are saved and wait for GLM; there is no local OCR or heuristic-extraction fallback. In local mode, `npm run local` automatically reads pending originals from open import shipments, including attachments in imported `.eml` files, using two concurrent readers. Keep the local server running; the browser can close. Samples/source collections and reference-only documents are excluded from the automatic queue. Each page saves independently, jobs and timings persist in SQLite, and rate limits pause jobs for a minute. Failed provider/preparation requests require deliberate retry from the document action; completed reads with unresolved evidence are not repeatedly charged. Expired leases recover interrupted work after ten minutes; a process crash after a provider response but before saving can cause that page to be read again. Manual decisions are preserved when parallel results commit against the latest workspace revision. There is no live Gmail synchronization yet. Hosted standalone mode retains browser processing. Synthetic regression tests cover the supported ECUS goods columns, but do not establish live-provider accuracy. Saved ToKhai sample comparisons are limited to their measured populations; they do not establish accuracy on every supplier layout.
 
-Current intake limits are 20 top-level files, 20 MiB per file, 50 pages per file and 50 attachments per saved email. The whole multipart request is capped at 22 MiB including metadata. Each Kimi call allows up to 5 pages / 24,000 text characters; each page image is limited to 2,600 pixels per side and 1.5 MiB. The workspace permits 6 provider calls per minute. Long documents can require several processing attempts. These limits are in code, not customer settings.
+Current intake limits are 20 top-level files, 20 MiB per file, 50 pages per file and 50 attachments per saved email. The whole multipart request is capped at 22 MiB including metadata. The extraction request limit is 5 pages / 24,000 text characters, while visual jobs send one page per call; each page image is limited to 2,600 pixels per side and 1.5 MiB. The workspace permits 6 provider calls per minute. Long documents can require several processing attempts. These limits are in code, not customer settings.
 
 ## Code structure
 
@@ -71,12 +71,12 @@ components/
   workspace/                 Navigation, shipment list and shipment sections
   declaration-draft.tsx      ECUS IDA three-form editor
   account-access.tsx         Current login/session screens
-  kimi-review.tsx            Current document-level Kimi action
+  kimi-review.tsx            Current document-level AI action (legacy filename)
 hooks/                       Workspace request/session state
 lib/
   engine.ts                  Shipment changes, reconciliation and review checks
   shipment-grouping.ts        Batch-wide document matching and ambiguity handling
-  email-shipment-ai.ts        Bounded Kimi email-to-shipment proposals and evidence checks
+  email-shipment-ai.ts        Bounded GLM email-to-shipment proposals and evidence checks
   email-grouping.ts           Current correspondence links and individual review decisions
   server-email-grouping.ts    Authorized matching requests and guarded persistence
   shipment-autofill.ts        Combined evidence → typed declaration components
@@ -93,7 +93,7 @@ lib/
   client-*.ts                Browser intake, image preparation and edit helpers
   server*.ts                 Request authorization, persistence and file handling
   auth-*.ts                  Identity/session and membership controls
-  kimi.ts                    Bounded multimodal Kimi requests and evidence checks
+  kimi.ts                    Multimodal requests and evidence checks (legacy filename)
   vision.ts                  Image validation and source binding
   client-vision.ts            Browser page rendering and resumable AI batches
   client-pdf-raster.ts        Worker lifecycle for PDFium page rendering
@@ -118,6 +118,8 @@ Database updates use revision checks so concurrent edits cannot silently overwri
 The current database stores a bounded workspace JSON aggregate. A whole batch changes this record in one revision-checked commit, so the form is not filled from a partly saved batch. Original file storage is separate; failed intake attempts clean up staged objects where possible. This is not a distributed transaction across database and file storage. The local automatic reader uses a separate durable page-job table. Hosted background workers and normalized shipment/event storage remain future work.
 
 ## Verify and download
+
+Stop the local server before `npm run build` or a standalone build/check/deploy. Production generation shares framework files with the local server; the build refuses to run while its launcher is active or cannot be verified.
 
 ```sh
 npm test

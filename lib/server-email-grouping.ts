@@ -1,3 +1,4 @@
+import { documentAiConfiguration } from '@/lib/ai-provider';
 import { env } from 'cloudflare:workers';
 import { z } from 'zod';
 import { consumeRateLimit } from '@/lib/auth-persistence';
@@ -14,9 +15,9 @@ const schema = z.object({ revision: z.number().int().nonnegative(), emailIds: z.
 export async function matchEmailsInContext(context: WorkspaceContext, requestedIds: string[]) {
   const emailIds = [...new Set(requestedIds)];
   if (!emailIds.length || emailIds.some(id => !context.state.emails.some(email => email.id === id))) throw new ApiError(400, 'Select stored emails in this workspace.');
-  const config = { apiKey: env.MOONSHOT_API_KEY, model: env.MOONSHOT_MODEL };
-  if (!kimiStatus(config).configured) throw new ApiError(503, 'An administrator must configure Kimi on the server before matching emails.');
-  if (!await consumeRateLimit(context.db, `kimi-extract:${context.state.id}`, KIMI_LIMITS.requestsPerMinute, 60)) throw new ApiError(429, 'The Kimi request limit was reached. Saved emails are safe; resume matching in one minute.');
+  const config = documentAiConfiguration(env);
+  if (!kimiStatus(config).configured) throw new ApiError(503, 'An administrator must configure GLM-5.3-Flash on the server before matching emails.');
+  if (!await consumeRateLimit(context.db, `kimi-extract:${context.state.id}`, KIMI_LIMITS.requestsPerMinute, 60)) throw new ApiError(429, 'The AI request limit was reached. Saved emails are safe; resume matching in one minute.');
   try {
     const selected = emailIds.slice(0, EMAIL_SHIPMENT_AI_LIMITS.maxEmails);
     const fingerprint = await emailMatchingInputFingerprint(context.state, selected);

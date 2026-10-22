@@ -52,7 +52,7 @@ export async function resolve(specifier, context, next) {
   vision: stub(`export const loadVisionPages = (...args) => globalThis[Symbol.for('aicd.tests.background')].images(...args);`),
   kimi: stub(`export * from ${JSON.stringify(new URL('../lib/kimi.ts', import.meta.url).href)}; export const extractWithKimi = (...args) => globalThis[Symbol.for('aicd.tests.background')].extract(...args);`),
 } });
-shared[key] = { env: { AICD_AUTH_MODE: 'local', AICD_BACKGROUND_PROCESSING: '0', MOONSHOT_API_KEY: 'synthetic-never-transmitted' } };
+shared[key] = { env: { AICD_AUTH_MODE: 'local', AICD_BACKGROUND_PROCESSING: '0', ZAI_API_KEY: 'synthetic-never-transmitted', ZAI_MODEL: 'glm-5.3-flash' } };
 const { pendingAiJobs } = await import('../lib/server-ai-queue.ts');
 const { requestKimiExtraction } = await import('../lib/server-kimi.ts');
 const { uploadVisionPage } = await import('../lib/server-vision.ts');

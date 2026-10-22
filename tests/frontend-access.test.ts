@@ -89,6 +89,6 @@ test('auth and AI feedback translates in both directions and keeps evidence unch
   assert.equal(translateSystemText('Chỉ chọn tối đa 5 trang mỗi lần.', 'en'), 'Select at most 5 pages per request.');
   assert.equal(translateSystemText('Select at most 5 pages per request.', 'vi'), 'Chỉ chọn tối đa 5 trang mỗi lần.');
   assert.equal(translateSystemText('Văn bản được chọn vượt quá 24000 ký tự. Chọn ít trang hơn; nội dung sẽ không bị cắt tự động.', 'en'), 'Selected text exceeds 24000 characters. Select fewer pages; text will not be truncated automatically.');
-  assert.equal(auditActionLabel('ai_header_proposals_received', 'en'), 'Kimi header proposals received');
+  assert.equal(auditActionLabel('ai_header_proposals_received', 'en'), 'AI header proposals received');
   assert.equal(translateSystemText('Original invoice: Công ty Nguyễn — 12.450 USD', 'en'), 'Original invoice: Công ty Nguyễn — 12.450 USD');
 });

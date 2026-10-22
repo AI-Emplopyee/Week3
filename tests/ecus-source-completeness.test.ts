@@ -30,5 +30,5 @@ test('removing document-category requirements retains unread-source and uncertai
   assert.ok(pending.some(issue=>issue.kind==='document'&&issue.documentIds.includes(document.id)));
   assert.ok(!pending.some(issue=>issue.id.endsWith(':required')),'Unread sources must not produce premature missing-field questions.');
   document.extractionStatus='needs_transcription';document.pages[0].aiReadability='uncertain';document.aiProcessedPages=[1];
-  assert.equal(getIssues(state).find(issue=>issue.id.endsWith(':document-source'))?.title,'Kimi chưa đọc rõ chứng từ');
+  assert.equal(getIssues(state).find(issue=>issue.id.endsWith(':document-source'))?.title,'AI chưa đọc rõ chứng từ');
 });

@@ -100,8 +100,8 @@ export function EcusFieldEvidence({
         <small>
           {hasManualBasis
             ? say(
-                "Có dữ liệu hoặc căn cứ do người dùng nhập. Điểm bên dưới chỉ thuộc lần đọc chứng từ của Kimi.",
-                "Includes user input or a manual basis. Scores below belong only to Kimi’s source reading.",
+                "Có dữ liệu hoặc căn cứ do người dùng nhập. Điểm bên dưới chỉ thuộc lần đọc chứng từ của AI.",
+                "Includes user input or a manual basis. Scores below belong only to AI’s source reading.",
               )
             : entry?.review
               ? say("Đã được người phụ trách rà soát", "Reviewed by a person")
@@ -115,8 +115,8 @@ export function EcusFieldEvidence({
       {documents.length > 0 && (
         <p className="ecus-confidence-note">
           {say(
-            "Điểm là ước lượng của Kimi về lần đọc nguồn, chưa được hiệu chuẩn; không phải xác nhận tính đúng của mã khai báo.",
-            "Scores are Kimi’s uncalibrated estimates of source readings, not validation of declaration codes.",
+            "Điểm là ước lượng của AI về lần đọc nguồn, chưa được hiệu chuẩn; không phải xác nhận tính đúng của mã khai báo.",
+            "Scores are AI’s uncalibrated estimates of source readings, not validation of declaration codes.",
           )}
         </p>
       )}
@@ -148,7 +148,7 @@ export function EcusFieldEvidence({
             <div className="ecus-reading-score">
               <span>
                 {kimi
-                  ? say("Ước lượng của Kimi", "Kimi estimate")
+                  ? say("Ước lượng của AI", "AI estimate")
                   : candidate
                     ? say("Kết quả từ bộ đọc cũ", "Legacy extractor reading")
                     : say("Dẫn nguồn đã lưu", "Saved source evidence")}
@@ -194,8 +194,8 @@ export function EcusFieldEvidence({
                 (document.mime === "application/pdf" ||
                   document.mime.startsWith("image/"))
                   ? say(
-                      "Lần đọc này chỉ lưu trích dẫn văn bản, chưa có vùng ảnh. Có thể yêu cầu Kimi đọc lại bản gốc.",
-                      "This reading saved a text quotation without image bounds. Reread the original with Kimi to capture a crop.",
+                      "Lần đọc này chỉ lưu trích dẫn văn bản, chưa có vùng ảnh. Có thể yêu cầu AI đọc lại bản gốc.",
+                      "This reading saved a text quotation without image bounds. Reread the original with AI to capture a crop.",
                     )
                   : say(
                       "Nguồn văn bản — trích dẫn nguyên văn được hiển thị ở trên.",
@@ -210,8 +210,8 @@ export function EcusFieldEvidence({
         <p className="ecus-no-crop">
           {hasManualBasis
             ? say(
-                "Thông tin được nhập thủ công; không có điểm Kimi hoặc vùng ảnh gắn với ô này.",
-                "Manually supplied information has no Kimi score or image crop for this field.",
+                "Thông tin được nhập thủ công; không có điểm AI hoặc vùng ảnh gắn với ô này.",
+                "Manually supplied information has no AI score or image crop for this field.",
               )
             : say(
                 "Chưa có dẫn nguồn riêng cho ô này. Chọn ô đã được tự điền để xem vùng chứng từ và độ tin cậy.",

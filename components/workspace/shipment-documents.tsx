@@ -230,8 +230,8 @@ export function ShipmentDocuments({
               </strong>
               <p>
                 {locale === "vi"
-                  ? "Dữ liệu đang lưu có thể đến từ OCR hoặc trình đọc PDF cũ. Quy trình hiện tại dùng Kimi để đọc lại bản gốc; các giá trị cũ không được gắn nhãn là kết quả Kimi."
-                  : "Saved data may come from an earlier OCR or PDF reader. The current workflow uses Kimi to read the original; earlier values are not labeled as Kimi results."}
+                  ? "Dữ liệu đang lưu có thể đến từ OCR hoặc trình đọc PDF cũ. Quy trình hiện tại dùng AI để đọc lại bản gốc; các giá trị cũ không được gắn nhãn là kết quả AI."
+                  : "Saved data may come from an earlier OCR or PDF reader. The current workflow uses AI to read the original; earlier values are not labeled as AI results."}
               </p>
             </div>
           )}
@@ -244,8 +244,8 @@ export function ShipmentDocuments({
             label={
               legacySource
                 ? locale === "vi"
-                  ? "Đọc bản gốc bằng Kimi"
-                  : "Read original with Kimi"
+                  ? "Đọc bản gốc bằng AI"
+                  : "Read original with AI"
                 : undefined
             }
             onBusyChange={setBusy}
@@ -260,20 +260,20 @@ export function ShipmentDocuments({
             <p className="muted" role="status">
               {legacySource || source.aiStatus === "unavailable"
                 ? locale === "vi"
-                  ? "Đang chờ Kimi đọc bản gốc."
-                  : "Waiting for Kimi to read the original."
+                  ? "Đang chờ AI đọc bản gốc."
+                  : "Waiting for AI to read the original."
                 : source.aiStatus === "completed"
-                  ? t("Kimi đã xử lý toàn bộ trang chứng từ.")
+                  ? t("AI đã xử lý toàn bộ trang chứng từ.")
                   : source.aiStatus === "partial"
                     ? t(
-                        "Kimi đã xử lý {p0}/{p1} trang. Có thể tiếp tục các trang còn lại.",
+                        "AI đã xử lý {p0}/{p1} trang. Có thể tiếp tục các trang còn lại.",
                         {
                           p0: source.aiProcessedPages?.length || 0,
                           p1: source.pages.length,
                         },
                       )
                     : t(
-                        "Kimi chưa hoàn tất. Bản gốc và kết quả các trang đã xử lý vẫn được lưu.",
+                        "AI chưa hoàn tất. Bản gốc và kết quả các trang đã xử lý vẫn được lưu.",
                       )}
             </p>
           )}

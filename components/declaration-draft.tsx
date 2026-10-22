@@ -716,8 +716,8 @@ export function DeclarationDraftEditor({
             </strong>
             <p>
               {say(
-                "Danh sách thông tin cần hỏi sẽ được xác định sau khi Kimi đọc rõ toàn bộ trang và phân nhóm được xác nhận. Các ô bắt buộc vẫn được đánh dấu; bạn có thể chỉnh sửa thông tin đã có.",
-                "Information requests will be identified after Kimi has read every page clearly and document grouping is confirmed. Required fields remain marked, and you can edit information already available.",
+                "Danh sách thông tin cần hỏi sẽ được xác định sau khi AI đọc rõ toàn bộ trang và phân nhóm được xác nhận. Các ô bắt buộc vẫn được đánh dấu; bạn có thể chỉnh sửa thông tin đã có.",
+                "Information requests will be identified after AI has read every page clearly and document grouping is confirmed. Required fields remain marked, and you can edit information already available.",
               )}
             </p>
           </div>

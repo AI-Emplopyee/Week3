@@ -113,7 +113,7 @@ export function ExtractionTrace({ state, shipment, document, page }: Props) {
         <ScanLine size={15} />
         <span>{say("Xem cách trích xuất", "How this was extracted")}</span>
         <small>
-          {kimiCandidates.length} {say("giá trị từ Kimi", "Kimi readings")}
+          {kimiCandidates.length} {say("giá trị từ AI", "AI readings")}
         </small>
         <ChevronDown size={14} />
       </summary>
@@ -129,16 +129,16 @@ export function ExtractionTrace({ state, shipment, document, page }: Props) {
                 {visual
                   ? document.mime === "application/pdf"
                     ? say(
-                        "PDFium dựng ảnh từng trang PDF. Ảnh trang được gửi đến Kimi; không lấy văn bản PDF hoặc chạy OCR.",
-                        "PDFium renders each PDF page as an image. Page images go to Kimi; no PDF text extraction or OCR runs.",
+                        "PDFium dựng ảnh từng trang PDF. Ảnh trang được gửi đến AI; không lấy văn bản PDF hoặc chạy OCR.",
+                        "PDFium renders each PDF page as an image. Page images go to AI; no PDF text extraction or OCR runs.",
                       )
                     : say(
-                        "Ảnh chứng từ gốc được gửi đến Kimi để đọc nội dung.",
-                        "The original document image goes to Kimi for reading.",
+                        "Ảnh chứng từ gốc được gửi đến AI để đọc nội dung.",
+                        "The original document image goes to AI for reading.",
                       )
                   : say(
-                      "Nội dung của tệp được gửi đến Kimi để xác định thông tin chứng từ.",
-                      "The file content goes to Kimi to identify document information.",
+                      "Nội dung của tệp được gửi đến AI để xác định thông tin chứng từ.",
+                      "The file content goes to AI to identify document information.",
                     )}
               </p>
             </div>
@@ -147,19 +147,19 @@ export function ExtractionTrace({ state, shipment, document, page }: Props) {
             <Sparkles size={16} />
             <div>
               <strong>
-                {say("2. Kimi đọc trang", "2. Kimi reads the page")}
+                {say("2. AI đọc trang", "2. AI reads the page")}
               </strong>
               <p>
                 {models.length
                   ? models.join(" · ")
                   : processed
                     ? say(
-                        "Trang đã được Kimi xử lý; trang này chưa có giá trị trích xuất ghi tên mô hình.",
-                        "Kimi processed this page; no extracted value on this page records the model name.",
+                        "Trang đã được AI xử lý; trang này chưa có giá trị trích xuất ghi tên mô hình.",
+                        "AI processed this page; no extracted value on this page records the model name.",
                       )
                     : say(
-                        "Chưa có kết quả Kimi đã lưu cho trang này.",
-                        "No saved Kimi result for this page yet.",
+                        "Chưa có kết quả AI đã lưu cho trang này.",
+                        "No saved AI result for this page yet.",
                       )}
               </p>
               <span>
@@ -204,16 +204,16 @@ export function ExtractionTrace({ state, shipment, document, page }: Props) {
         {legacyCount > 0 && (
           <p className="extraction-legacy-note">
             {say(
-              `Trang này còn ${legacyCount} kết quả từ lần đọc trước. Chúng được giữ để đối chiếu, không được dùng làm dữ liệu Kimi hiện tại hoặc tự điền.`,
-              `This page also has ${legacyCount} historical readings. They are retained for reference and are not used as current Kimi readings or for autofill.`,
+              `Trang này còn ${legacyCount} kết quả từ lần đọc trước. Chúng được giữ để đối chiếu, không được dùng làm dữ liệu AI hiện tại hoặc tự điền.`,
+              `This page also has ${legacyCount} historical readings. They are retained for reference and are not used as current AI readings or for autofill.`,
             )}
           </p>
         )}
         {hasRejected && (
           <p className="extraction-legacy-note">
             {say(
-              "Một số giá trị Kimi trả về không vượt qua kiểm tra dẫn nguồn. Những giá trị đó không được lưu hoặc tự điền.",
-              "Some Kimi outputs failed the source-evidence checks. Those values were neither saved nor autofilled.",
+              "Một số giá trị AI trả về không vượt qua kiểm tra dẫn nguồn. Những giá trị đó không được lưu hoặc tự điền.",
+              "Some AI outputs failed the source-evidence checks. Those values were neither saved nor autofilled.",
             )}
           </p>
         )}
@@ -263,7 +263,7 @@ export function ExtractionTrace({ state, shipment, document, page }: Props) {
                         <span>{t(confidenceLabel[candidate.confidence])}</span>
                         {candidate.confidenceScore !== undefined && (
                           <span>
-                            {say("Ước lượng của Kimi", "Kimi estimate")}:{" "}
+                            {say("Ước lượng của AI", "AI estimate")}:{" "}
                             {candidate.confidenceScore}/100 ·{" "}
                             {say("chưa hiệu chuẩn", "uncalibrated")}
                           </span>
@@ -271,13 +271,13 @@ export function ExtractionTrace({ state, shipment, document, page }: Props) {
                         <span>
                           {candidate.readability === "clear"
                             ? say(
-                                "Kimi đọc rõ giá trị này",
-                                "Kimi marked this reading clear",
+                                "AI đọc rõ giá trị này",
+                                "AI marked this reading clear",
                               )
                             : candidate.readability === "uncertain"
                               ? say(
-                                  "Kimi chưa đọc rõ giá trị này",
-                                  "Kimi marked this reading uncertain",
+                                  "AI chưa đọc rõ giá trị này",
+                                  "AI marked this reading uncertain",
                                 )
                               : say(
                                   "Chưa có đánh giá độ rõ riêng cho giá trị",
@@ -305,7 +305,7 @@ export function ExtractionTrace({ state, shipment, document, page }: Props) {
                         <p className="muted">
                           {say(
                             "Dẫn nguồn được đối chiếu nguyên văn với nội dung trang đã gửi.",
-                            "The quotation is matched against the page text submitted to Kimi.",
+                            "The quotation is matched against the page text submitted to AI.",
                           )}
                         </p>
                       )}
@@ -362,12 +362,12 @@ export function ExtractionTrace({ state, shipment, document, page }: Props) {
           <p className="extraction-no-readings">
             {processed
               ? say(
-                  "Kimi đã đọc trang này nhưng không có giá trị trích xuất đã lưu.",
-                  "Kimi read this page, but no extracted field values were saved.",
+                  "AI đã đọc trang này nhưng không có giá trị trích xuất đã lưu.",
+                  "AI read this page, but no extracted field values were saved.",
                 )
               : say(
-                  "Kết quả sẽ xuất hiện ở đây sau khi Kimi đọc bản gốc.",
-                  "The results will appear here after Kimi reads the original.",
+                  "Kết quả sẽ xuất hiện ở đây sau khi AI đọc bản gốc.",
+                  "The results will appear here after AI reads the original.",
                 )}
           </p>
         )}

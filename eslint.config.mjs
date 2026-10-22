@@ -10,7 +10,9 @@ const eslintConfig = defineConfig([
     // Default ignores of eslint-config-next:
     ".next/**",
     "out/**",
-    "build/**",
+    // This repository keeps its Worker and development gate in build/.
+    "!build/",
+    "!build/**",
     "next-env.d.ts",
     "outputs/**",
     "dist/**",

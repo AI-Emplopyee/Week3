@@ -9,6 +9,7 @@ import { Badge } from "./shared";
 
 type Status = {
   configured: boolean;
+  model?: string | null;
   backgroundProcessing?: boolean;
   backgroundPaused?: boolean;
   queue?: {
@@ -49,7 +50,7 @@ export function AiProcessingStatus({ documents }: { documents: ShipmentDocument[
   const queue = status?.queue;
   const label = unavailable ? say('Chưa cập nhật', 'Status unavailable')
     : !status ? say('Đang tải…', 'Loading…')
-    : !status.configured ? say('Chưa cấu hình Kimi', 'Kimi not configured')
+    : !status.configured ? say('Chưa cấu hình AI', 'AI not configured')
     : status.backgroundPaused ? say('Đã tạm dừng', 'Paused')
     : status.backgroundProcessing ? say('Tự động', 'Automatic')
     : say('Theo phiên trình duyệt', 'Browser session');
@@ -60,6 +61,7 @@ export function AiProcessingStatus({ documents }: { documents: ShipmentDocument[
         <h2><Activity size={19} />{say('Đọc chứng từ tự động', 'Automatic document reading')}</h2>
         <Badge tone={status?.configured && !status.backgroundPaused && !unavailable ? 'green' : 'amber'}>{label}</Badge>
       </div>
+      {status?.model && <p className="muted">{say('Mô hình đọc chứng từ', 'Document reader')}: {status.model}</p>}
       <p>{status?.backgroundProcessing ? say(
         'Chứng từ mới được đọc tự động khi ứng dụng trên máy đang chạy, tối đa hai chứng từ song song. Có thể đóng tab trình duyệt.',
         'New originals are read automatically while the local app is running, with up to two documents in parallel. The browser tab can be closed.',

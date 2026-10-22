@@ -5,9 +5,9 @@ SUPABASE_URL=""
 SUPABASE_ANON_KEY=""
 AICD_OWNER_EMAIL=""
 
-# Optional owner-configured Kimi extraction. The key enables paid processing.
+# Optional owner-configured GLM extraction. The key enables paid processing.
 # For npm run local, edit .aicd-local/.dev.vars instead: this root file is ignored.
-# The API endpoint is fixed to https://api.moonshot.ai/v1 by server code.
-MOONSHOT_API_KEY=""
-# Optional override. An omitted model uses kimi-k2.6.
-MOONSHOT_MODEL="kimi-k2.6"
+# The API endpoint is fixed to https://api.z.ai/api/paas/v4 by server code.
+ZAI_API_KEY=""
+# The live application supports GLM-5.3-Flash only, with low reasoning effort.
+ZAI_MODEL="glm-5.3-flash"

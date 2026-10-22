@@ -95,7 +95,7 @@ function KimiRequestDialog({
           error?: string;
         };
         if (!response.ok)
-          throw new Error(body.error || "Không thể kiểm tra kết nối Kimi.");
+          throw new Error(body.error || "Không thể kiểm tra kết nối AI.");
         setStatus(body);
       })
       .catch((error) => {
@@ -103,7 +103,7 @@ function KimiRequestDialog({
           setError(
             error instanceof Error
               ? error.message
-              : "Không thể kiểm tra kết nối Kimi.",
+              : "Không thể kiểm tra kết nối AI.",
           );
       });
     return () => {
@@ -183,7 +183,7 @@ function KimiRequestDialog({
         result.workspace,
         !result.rejected && uncertain.length
           ? t(
-              "Đã lưu kết quả Kimi. Trang {p0} vẫn chưa rõ; có thể đọc lại hoặc thay bản rõ hơn.",
+              "Đã lưu kết quả AI. Trang {p0} vẫn chưa rõ; có thể đọc lại hoặc thay bản rõ hơn.",
               { p0: uncertain.join(", ") },
             )
           : t(
@@ -235,7 +235,7 @@ function KimiRequestDialog({
     >
       <div className="modal-header">
         <div>
-          <span className="eyebrow">KIMI</span>
+          <span className="eyebrow">{status?.model || "AI"}</span>
           <h2>{t("Đọc chứng từ bằng AI")}</h2>
         </div>
         <button
@@ -262,13 +262,18 @@ function KimiRequestDialog({
         </div>
         <p>
           {visual
-            ? t(
-                "Kimi đọc trực tiếp ảnh trang chứng từ và điền bản nháp. Ảnh được gửi đến Moonshot International.",
-              )
+            ? t("AI đọc trực tiếp ảnh trang chứng từ và điền bản nháp.")
             : t(
-                "Kimi đọc văn bản đã lưu để trích xuất thông tin có dẫn nguồn và cập nhật bản nháp.",
+                "AI đọc văn bản đã lưu để trích xuất thông tin có dẫn nguồn và cập nhật bản nháp.",
               )}
         </p>
+        {status?.configured && (
+          <p className="muted">
+            {locale === "vi" ? "Nơi xử lý: " : "Processing provider: "}
+            <strong>{status.provider}</strong>
+            {status.endpoint && <> · {status.endpoint}</>}
+          </p>
+        )}
         <p className="muted">
           {t(
             "Thông tin rõ ràng, có dẫn nguồn và không mâu thuẫn được tự điền. Chỉ thông tin thiếu, chưa rõ hoặc mâu thuẫn mới cần kiểm tra. Tờ khai vẫn chờ người duyệt.",
@@ -349,13 +354,13 @@ function KimiRequestDialog({
         {status && !status.configured && (
           <p className="connection-blocker">
             {t(
-              "Quản trị viên cần cấu hình Kimi trên máy chủ để bật chức năng này. Hiện chưa thể gửi yêu cầu trích xuất.",
+              "Quản trị viên cần cấu hình AI trên máy chủ để bật chức năng này. Hiện chưa thể gửi yêu cầu trích xuất.",
             )}
           </p>
         )}
         {status?.configured && visual && status.visionSupported === false && (
           <p className="connection-blocker">
-            {t("Quản trị viên cần chọn mô hình Kimi hỗ trợ đọc ảnh.")}
+            {t("Quản trị viên cần chọn mô hình AI hỗ trợ đọc ảnh.")}
           </p>
         )}
         {(error || selectionError) && (
