@@ -1,0 +1,48 @@
+{
+  "verifiedOn": "2026-10-26",
+  "scope": "Exact published location codes and explicit package wording; no benchmark answers, source-route inference, package classification, native ECUS catalog compatibility guarantee or phone numbering-plan claim.",
+  "sources": [
+    {
+      "id": "unlocode-belgium-bru",
+      "publisher": "UNECE",
+      "url": "https://service.unece.org/trade/locode/be.htm",
+      "locator": "BE BRU row",
+      "code": "BEBRU",
+      "name": "Brussel (Bruxelles)",
+      "aliases": ["Brussel", "Bruxelles"],
+      "function": "1234----",
+      "iataColumn": "empty"
+    },
+    {
+      "id": "unlocode-vietnam-sgn",
+      "publisher": "UNECE",
+      "url": "https://service.unece.org/trade/locode/vn.htm",
+      "locator": "VN SGN row",
+      "code": "VNSGN",
+      "name": "Ho Chi Minh City",
+      "function": "1-3456--",
+      "iataColumn": "empty"
+    },
+    {
+      "id": "unlocode-attributes",
+      "publisher": "UNECE",
+      "url": "https://unlocode.unece.org/docs/data-attributes/",
+      "secondaryPrimaryUrl": "https://service.unece.org/trade/locode/Service/LocodeColumn.htm",
+      "supports": "UN/LOCODE consists of the country element plus three-character location element. Airport is function 4. The IATA column is empty when the location element itself matches its IATA code. The helper accepts a country/location routing prefix only when both tokens match the same verified row; it does not identify the suffix."
+    },
+    {
+      "id": "unece-rec21-package",
+      "publisher": "UNECE / UN CEFACT",
+      "url": "https://service.unece.org/trade/uncefact/vocabulary/rec21/",
+      "secondaryPrimaryUrl": "https://unece.org/sites/default/files/2023-10/rec21rev2_ecetrd211E.pdf",
+      "currentVocabularyUrl": "https://vocabulary.uncefact.org/PackageTypeCodeList",
+      "locator": "Package PK; Piece PP",
+      "supports": "Package, Packages, PKG and PKGS are spelling/abbreviation forms of explicit package wording, represented as PK only in packageUnit. Piece/PCS/PCE are not package synonyms; Piece has a separate packaging meaning and code PP, so bare piece counts remain unresolved. Goods quantity pieces still use the separately documented PCE representation."
+    }
+  ],
+  "retrieval": "Verified against primary-source public search results. Direct opens of the static UNECE country pages returned HTTP 403; no downloaded source-file hash or complete current-directory audit is asserted.",
+  "phoneRule": {
+    "id": "corroborated-vietnam-telephone",
+    "supports": "No number-plan repair from appearance alone. A +840... source value can be projected to +84... only when a separate current document explicitly quotes the otherwise identical +84... number for the same named party, all relevant clear source values agree under that single correction, and no conflicting party identifier exists. This is source corroboration, not a claim that every +840 number is invalid. The international representation is retained; no domestic prefix or area code is invented."
+  }
+}

@@ -2,11 +2,12 @@
 
 import { useLocale } from "@/lib/i18n";
 import type { Action, WorkspaceResponse } from "@/lib/types";
-import { ArrowUpRight, Mail } from "lucide-react";
+import { Mail } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "./shared";
 import { KimiPrompts } from "./kimi-prompts";
 import { AiProcessingStatus } from "./ai-processing-status";
+import { EcusConnection } from "./ecus-connection";
 
 type Props = {
   data: WorkspaceResponse;
@@ -70,21 +71,7 @@ export function WorkspaceSettings({ data, busy, mutation }: Props) {
             </button>
           </form>
         </section>
-        <section className="card settings-card">
-          <div className="section-heading">
-            <h2>
-              <ArrowUpRight size={19} />
-              {t("Kết nối ECUS")}
-            </h2>
-            <Badge tone="amber">{t("Chưa kết nối")}</Badge>
-          </div>
-          <p>ECUS5-VNACCS 2018 · 6.0.248</p>
-          <p>
-            {t(
-              "Kết nối ECUS chưa được triển khai. Tên đăng nhập và mật khẩu sẽ được yêu cầu khi kết nối.",
-            )}
-          </p>
-        </section>
+        <EcusConnection data={data} />
       </div>
     </div>
   );

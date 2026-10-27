@@ -1,11 +1,22 @@
 import type { Candidate, Issue, WorkspaceState } from "./types.ts";
 import { buildShipmentFacts, isShipmentFactClear, normalizedShipmentValue } from "./shipment-autofill.ts";
+import { ECUS_FORM_FIELDS } from "./ecus-form.ts";
 
 export type ReviewQuestion = {
   kind: "confirm" | "choose" | "missing" | "review";
   candidates: Candidate[];
   values: string[];
 };
+
+/** A derived alternative keeps its original evidence identity. Review the target
+ * form cell instead of approving that original candidate as a different field. */
+export function declarationReviewIssue(issue: Issue, candidate: Candidate): Issue | undefined {
+  if (issue.ecusFieldKey) return issue;
+  if (!issue.field || candidate.field === issue.field) return undefined;
+  const target = ECUS_FORM_FIELDS.find(field => !field.readOnly &&
+    (field.sourceField ?? field.key) === issue.field && (field.tab === "goods") === !!issue.goodsLineId);
+  return target ? { ...issue, field: target.fieldId, ecusFieldKey: target.key } : undefined;
+}
 
 /** A question may offer only evidence from a current document in this shipment. */
 export function reviewQuestion(
@@ -40,16 +51,23 @@ export function reviewQuestion(
   }
   // Keep one original display value per semantic value, plus all original evidence.
   const values = [...distinctValues.values()];
+  // ECUS source findings retain kind "declaration" so the question opens the
+  // right form cell. Their evidence subtype still needs an explicit choice or
+  // confirmation, just like the shipment-level source questions.
+  const evidenceKind = issue.kind === "declaration" && issue.ecusFieldKey && issue.id.includes(":ecus-evidence:")
+    ? issue.id.match(/:(conflict|uncertain|invalid)$/)?.[1]
+    : undefined;
+  const questionKind = evidenceKind === "invalid" ? "uncertain" : evidenceKind ?? issue.kind;
   const kind =
     (issue.kind === "missing" || (issue.ecusFieldKey && issue.id.endsWith(':required'))) && issue.field && values.length === 0
       ? "missing"
       : issue.field &&
           values.length > 1 &&
-          ["conflict", "uncertain", "stale"].includes(issue.kind)
+          ["conflict", "uncertain", "stale"].includes(questionKind)
         ? "choose"
         : issue.field &&
             values.length === 1 &&
-            ["uncertain", "stale"].includes(issue.kind)
+            ["uncertain", "stale"].includes(questionKind)
           ? "confirm"
           : "review";
   return { kind, candidates, values };

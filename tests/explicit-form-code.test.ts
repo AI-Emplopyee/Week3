@@ -18,6 +18,18 @@ test('unit mappings never invent packages, sets, missing units or a new physical
   assert.equal(explicitFormCode('grossWeightUnit', 'PCS'), undefined);
 });
 
+test('explicit package wording maps to PK without inferring packaging from piece counts', () => {
+  for (const value of ['Package', 'PACKAGES', 'PKG', 'pkgs', 'PK', ' packages ']) {
+    assert.equal(explicitFormCode('packageUnit', value)?.value, 'PK');
+    assert.equal(explicitFormCode('packageUnit', value)?.source, 'unece-rec21-package');
+  }
+  for (const value of ['Piece', 'Pieces', 'PCS', 'PCE', 'PP', 'Carton', '1 package', 'package / piece', '']) {
+    assert.equal(explicitFormCode('packageUnit', value), undefined, value);
+  }
+  assert.equal(explicitFormCode('unit', 'packages'), undefined);
+  assert.equal(explicitFormCode('unit', 'Piece')?.value, 'PCE');
+});
+
 test('historical payment normalization requires explicit codebook selection and an exact payment field', () => {
   for (const value of ['TT', 'TTr', 'TTR', 'Telegraphic Transfer']) {
     assert.equal(explicitFormCode('paymentMethod', value), undefined, 'Current forms must not silently select a historical codebook');

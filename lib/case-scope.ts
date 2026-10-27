@@ -13,7 +13,7 @@ export function caseScopeMessage(type: CaseType): { title: string; description: 
   if (type === 'import') return null;
   if (type === 'export') return {
     title: 'Hồ sơ xuất khẩu / tái xuất',
-    description: 'Chứng từ được lưu để tra cứu và trích xuất. Biểu mẫu hiện tại dành cho nhập khẩu; bản khai xuất khẩu sẽ được bổ sung sau.',
+    description: 'Rà soát biểu mẫu xuất khẩu EDA, xác nhận các giá trị và gửi đến máy Windows đã kết nối để tạo bản nháp ECUS.',
   };
   if (type === 'reference') return {
     title: 'Bộ tài liệu tham khảo',

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractWithKimi, groundKimiProposals, KIMI_ENDPOINT, KIMI_LIMITS, KimiError, kimiRequestSchema, kimiStatus, parseKimiContent, selectKimiPages } from '../lib/kimi.ts';
+import { extractWithKimi, groundKimiProposals, kimiExtractionPrompt, KIMI_FIELDS, KIMI_ENDPOINT, KIMI_LIMITS, KimiError, kimiRequestSchema, kimiStatus, parseKimiContent, selectKimiPages } from '../lib/kimi.ts';
 import { createEmptyWorkspace, getIssues, getProposedFields } from '../lib/engine.ts';
 import { applyFixtureAction as applyAction } from './helpers/kimi-fixtures.ts';
 import { parseMutation } from '../lib/server-validation.ts';
@@ -329,4 +329,17 @@ test('internal action enforces case and document version and never silently choo
   const changed = act(state, aiAction(state, [proposal(), proposal({ value: 'DEMO', quote: 'Invoice No: DEMO-A17' })]));
   assert.equal(getProposedFields(changed, changed.cases[0].id).invoiceNumber, undefined);
   assert.ok(getIssues(changed).some(issue => issue.field === 'invoiceNumber' && issue.kind === 'conflict'));
+});
+
+
+test('the flight target requested by the prompt is an allowed field and reaches grounding', () => {
+  const prompt = kimiExtractionPrompt();
+  const requestedField = /flight identifier to ([a-zA-Z]+)/.exec(prompt)?.[1];
+  assert.ok(requestedField && KIMI_FIELDS.includes(requestedField), 'A literal flight must not be routed to an unsupported model field');
+  const flightText = 'Arrival notice\nFlight: ZZ4321\nDate: 11/02/2025';
+  const flightDocument: ShipmentDocument = { ...document, type: 'other', pages: [{ page: 1, text: flightText, textSource: 'office' }] };
+  const result = groundKimiProposals(flightDocument, flightDocument.pages, [proposal({ field: requestedField, value: 'ZZ4321', quote: 'Flight: ZZ4321', confidence: 'high' })], 'glm-5.3-flash');
+  assert.equal(result.rejected, 0);
+  assert.equal(result.candidates[0]?.field, 'vessel');
+  assert.equal(result.candidates[0]?.value, 'ZZ4321');
 });

@@ -70,6 +70,7 @@ import { ShipmentReport } from "@/components/workspace/shipment-report";
 import { SourceFields } from "@/components/workspace/source-fields";
 import { SourceGoods } from "@/components/workspace/source-goods";
 import { WorkspaceSettings } from "@/components/workspace/workspace-settings";
+import { EcusExportSubmit } from "@/components/workspace/ecus-export-submit";
 import { SampleReview } from "@/components/workspace/sample-review";
 import {
   WorkspaceShell,
@@ -141,6 +142,7 @@ function Workspace() {
   const [declarationDrafts, setDeclarationDrafts] = useState<
     Record<string, DeclarationUiDraft>
   >({});
+  const [exportDirty, setExportDirty] = useState(false);
   const [declarationFocus, setDeclarationFocus] = useState<
     string | undefined
   >();
@@ -530,6 +532,7 @@ function Workspace() {
     !!current &&
     (Object.keys(drafts).some((key) => key.startsWith(`${current.id}:`)) ||
       !!goodsDraft ||
+      exportDirty ||
       hasDeclarationDrafts(declarationDrafts, current.id));
   const hasPendingEmailDraft =
     !!current &&
@@ -542,6 +545,7 @@ function Workspace() {
           emailDraftEdits[draft.id].body !== draft.body),
     );
   const hasAnyPendingDrafts =
+    exportDirty ||
     Object.keys(drafts).length > 0 ||
     Object.keys(goodsDrafts).length > 0 ||
     Object.keys(declarationDrafts).length > 0 ||
@@ -1067,7 +1071,14 @@ function Workspace() {
                       {questionsPanel}
                     </details>
                   )}
-                  <DeclarationDraftEditor
+                  {current.caseType === "export" ? (
+                    <EcusExportSubmit
+                      state={state}
+                      shipment={current}
+                      disabled={busy || !!conflict}
+                      onDirtyChange={setExportDirty}
+                    />
+                  ) : <DeclarationDraftEditor
                     key={`${current.id}:${declarationFocus || ""}:${declarationGoodsFocus || ""}`}
                     state={state}
                     shipment={current}
@@ -1091,7 +1102,7 @@ function Workspace() {
                     }
                     mutation={mutation}
                     onManageGoods={() => setTab("goods")}
-                  />
+                  />}
                 </>
               ) : tab === "fields" || tab === "goods" ? (
                 <div

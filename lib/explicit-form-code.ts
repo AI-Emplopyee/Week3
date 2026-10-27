@@ -1,11 +1,16 @@
 /** Exact representation changes only. Source values and quotes remain untouched.
  * Source locators and the older payment-guide discrepancy are recorded in
- * docs/explicit-form-code-sources.json. This is not general code validation. */
+ * docs/explicit-form-code-sources.json and docs/verified-form-normalization-sources.json.
+ * This is not general code validation. */
 export type ExplicitFormCode = { value: string; source: string; reason: string };
 export type PaymentCodebook = 'vnaccs-circular-38-2015';
 
 export function explicitFormCode(field: string, value: string, paymentCodebook?: PaymentCodebook): ExplicitFormCode | undefined {
   const literal = value.trim().replace(/\s+/g, ' ');
+  if (field === 'packageUnit' && /^(?:pk|pkgs?|packages?)$/i.test(literal)) return {
+    value: 'PK', source: 'unece-rec21-package',
+    reason: 'form-code: Explicit package unit represented as PK (UNECE Recommendation 21, Package; docs/verified-form-normalization-sources.json). Original source quote retained. Piece/PCS/PCE does not establish this packaging type.',
+  };
   if (['unit', 'unit2', 'grossWeightUnit'].includes(field)) {
     if (/^(?:kg|kgm|kilograms?)$/i.test(literal)) return {
       value: 'KGM', source: 'unece-rec20-kilogram',

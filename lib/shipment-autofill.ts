@@ -1,4 +1,7 @@
 import { comparableWeightTotals, normalizeGrossWeightCandidates } from './weight-normalization.ts';
+import { isTransportRouteLabel, isUnspecifiedTransportLocation, projectTransportLocations, selectSpecificTransportLocations } from './transport-location-reconciliation.ts';
+import { verifiedTransportLocation } from './verified-transport-locations.ts';
+import { projectVietnamTelephoneCandidates } from './telephone-reconciliation.ts';
 import {
   declarationEntryKey,
   DECLARATION_LIMITS,
@@ -73,7 +76,14 @@ export function normalizedShipmentValue(field: string, value: string): string {
   // letter meaningful: this does not expand abbreviations or guess company names.
   if (partyFields.has(field))
     return trimmed.toLocaleLowerCase("en").replace(/\s*([.,])\s*/g, "$1");
-  if (["portOfLoading", "portOfDischarge"].includes(field)) return trimmed.toLocaleLowerCase("en").replace(/\s*,\s*/g, ",");
+  if (['portOfLoadingCode', 'portOfDischargeCode'].includes(field)) {
+    const location = verifiedTransportLocation(trimmed);
+    if (location) return location.code.toLowerCase();
+  }
+  if (["portOfLoading", "portOfDischarge"].includes(field)) {
+    const location = verifiedTransportLocation(trimmed);
+    return (location?.name ?? trimmed).toLocaleLowerCase("en").replace(/\s*,\s*/g, ",");
+  }
   if (/Address(?:Line\d+)?$/.test(field))
     return trimmed.toLocaleLowerCase("en").replace(/^address\s*:\s*/i, "").replace(/\s*([,])\s*/g, "$1");
   if (numericFields.has(field) && parseExactDecimal(trimmed)) {
@@ -86,6 +96,7 @@ export function normalizedShipmentValue(field: string, value: string): string {
   // Preserve historic comparison tokens for equivalent form spellings.
   if (explicitCode?.value === 'KGM') return 'kg';
   if (explicitCode?.value === 'PCE') return 'piece';
+  if (field === 'packageUnit' && (explicitCode?.value === 'PK' || lowered === 'pk')) return 'package';
   // KGS is also a mass-flow code. Only the separate source-aware gross-weight
   // normalization may resolve a documented physical weight before comparison.
   if (['unit', 'unit2', 'grossWeightUnit'].includes(field) && lowered === 'kgs') return 'kgs';
@@ -191,7 +202,11 @@ function activeCandidates(
       candidate.value.trim(),
   ).map((candidate) => canonicalExtractionField(candidate.field) === candidate.field
     ? candidate : { ...candidate, field: canonicalExtractionField(candidate.field) }).map(normalizeDeclarationCodeCandidate));
-  const raw = normalizeWeights ? normalizeGrossWeightCandidates(source, (field, evidence) => isExplicitWeightFactClear(state, field, evidence)) : source;
+  const telephones = projectVietnamTelephoneCandidates(source, [...documents.values()],
+    (field, evidence) => isShipmentFactClear(state, field, evidence));
+  const locations = projectTransportLocations(telephones, [...documents.values()],
+    (field, evidence) => isShipmentFactClear(state, field, evidence));
+  const raw = normalizeWeights ? normalizeGrossWeightCandidates(locations, (field, evidence) => isExplicitWeightFactClear(state, field, evidence)) : locations;
   return [...raw, ...deriveGuideCandidates(raw, [...documents.values()],
     (field, evidence) => isShipmentFactClear(state, field, evidence))];
 }
@@ -274,7 +289,14 @@ export function buildShipmentFacts(
         const available = candidates.filter((candidate) => field === "billOfLading"
           ? ["billOfLading", "houseBillOfLading", "masterBillOfLading"].includes(candidate.field)
           : candidate.field === field);
-        const selected = selectGuideCandidates(field, available, documents, candidates,
+        const specific = selectSpecificTransportLocations(field, available, documents,
+          (dependency, evidence) => isShipmentFactClear(state, dependency, evidence));
+        const selected: ReturnType<typeof selectGuideCandidates> = specific ? {
+          candidates: specific,
+          rule: { id: 'source-reconciliation:transport-location', section: 'transport-location',
+            reasonVi: 'Dùng địa điểm cụ thể trên chứng từ vận tải thay cho điều khoản cho phép bất kỳ cảng nào; giữ lại các địa điểm cụ thể đang mâu thuẫn.',
+            reasonEn: 'Use the specific transport location instead of an allowance for any port; retain conflicting specific locations for review.' },
+        } : selectGuideCandidates(field, available, documents, candidates,
           (dependency, evidence) => isShipmentFactClear(state, dependency, evidence));
         return [field, {
           ...reconcile(field, selected.candidates),
@@ -544,8 +566,15 @@ function proposalsFor(
       const chosen = fact.candidates.find(
         (candidate) =>
           candidate.id === reviewed.candidateId &&
-          normalizedShipmentValue(field, candidate.value) ===
-            normalizedShipmentValue(field, reviewed.value),
+          (normalizedShipmentValue(field, candidate.value) ===
+            normalizedShipmentValue(field, reviewed.value) ||
+            // An employee may explicitly accept the literal source spelling
+            // instead of a projected format. Bind that choice to its current
+            // original candidate; never replace it merely to match normalization.
+            state.candidates.some(original => original.id === candidate.id && original.field === field &&
+              original.caseId === shipment.id && original.documentId === candidate.documentId &&
+              original.documentVersion === candidate.documentVersion && original.page === candidate.page &&
+              original.value === reviewed.value)),
       );
       const provenance = chosen ? candidateEvidence(chosen, documents) : [];
       if (reviewed.source === "manual" || provenance.length)
@@ -587,6 +616,15 @@ function proposalsFor(
   const formCode = (source: Part): Part => {
     if (!source.value || source.reviewed || source.unknown || source.fact.status !== 'agreed' ||
       !isShipmentFactClear(state, source.fact.field, source.fact.candidates)) return source;
+    // A repeated name may be read as a short code on another page. Use the
+    // directory name only when this fact also has an eligible transport-code
+    // projection; comparison aliases alone never authorize a transformation.
+    if (['portOfLoading', 'portOfDischarge'].includes(source.fact.field)) {
+      const location = verifiedTransportLocation(source.value);
+      if (location && source.fact.candidates.some(candidate => candidate.normalizations.some(change =>
+        change.reason.startsWith('transport-location:'))))
+        return { ...source, value: location.name, formCodeReason: location.reason };
+    }
     const code = explicitFormCode(source.fact.field, source.value);
     return code && code.value !== source.value
       ? { ...source, value: code.value, formCodeReason: code.reason }
@@ -703,6 +741,12 @@ function proposalsFor(
         source = decimal(source, field.input === "integer");
       if (sourceKey === "hsCode") source = checked(source, (value) => /^\d{4,10}$/.test(value));
       if (sourceKey === "origin") source = checked(source, (value) => /^[A-Z]{2}$/i.test(value));
+      if (['portOfLoading', 'portOfDischarge'].includes(sourceKey) && !source.reviewed)
+        source = checked(source, value => !isTransportRouteLabel(value) && !isUnspecifiedTransportLocation(value));
+      // An AWB's piece count does not specify a package type. Keep the literal
+      // evidence available for review instead of guessing PK or the loose-piece code.
+      if (sourceKey === 'packageUnit' && !source.reviewed)
+        source = checked(source, value => !/^(?:pc|pcs|pieces?)$/i.test(value.trim()));
       if (["currency", "incoterm"].includes(sourceKey))
         source = checked(source, (value) => /^[A-Z]{3}$/i.test(value));
       source = checked(source, (value) => value.length <=
@@ -1066,9 +1110,9 @@ export function syncShipmentDeclaration(
     const missing = !valuePresent(proposal.value);
     const guideReasons = [...new Set(proposal.parts.flatMap((part) => [
       ...(part.formCodeReason ? [part.formCodeReason] : []),
-      ...(part.fact.rule ? [`${part.fact.rule.origin === "user_policy" ? "Source reconciliation policy" : `Supplied VNACCS guide ${part.fact.rule.section}`}: ${part.fact.rule.reasonEn}`] : []),
+      ...(part.fact.rule ? [`${part.fact.rule.id.startsWith('source-reconciliation:') ? 'Source reconciliation' : part.fact.rule.origin === "user_policy" ? "Source reconciliation policy" : `Supplied VNACCS guide ${part.fact.rule.section}`}: ${part.fact.rule.reasonEn}`] : []),
       ...part.fact.candidates.flatMap((candidate) => candidate.normalizations
-        .filter((change) => change.reason.startsWith("vnaccs-guide:") || change.reason.startsWith("user-policy:") || change.reason.startsWith("party-typography:") || change.reason.startsWith("weight-unit:"))
+        .filter((change) => change.reason.startsWith("vnaccs-guide:") || change.reason.startsWith("user-policy:") || change.reason.startsWith("party-typography:") || change.reason.startsWith("weight-unit:") || change.reason.startsWith('transport-location:') || change.reason.startsWith('telephone-corroboration:'))
         .map((change) => change.reason)),
     ]))];
     if (

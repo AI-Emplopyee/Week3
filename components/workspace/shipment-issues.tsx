@@ -3,7 +3,7 @@ import { useLocale } from "@/lib/i18n";
 import { fieldLabel, translateIssue } from "@/lib/i18n-core";
 import { getEcusFormField } from "@/lib/ecus-form";
 import { getDeclarationField } from "@/lib/declaration-catalog";
-import { expandedReviewIssueId, reviewQuestion } from "@/lib/review-questions";
+import { declarationReviewIssue, expandedReviewIssueId, reviewQuestion } from "@/lib/review-questions";
 import { automaticQuestionIssues } from "@/lib/shipment-correspondence";
 import { useState } from "react";
 import type {
@@ -254,14 +254,14 @@ export function ShipmentIssues({
                       <button
                         className="button secondary small"
                         disabled={busy || !editable}
-                        onClick={() =>
-                          issue.ecusFieldKey
-                            ? onDeclaration(issue)
-                            : void acceptCandidate(current, candidate)
-                        }
+                        onClick={() => {
+                          const target = declarationReviewIssue(issue, candidate);
+                          if (target) onDeclaration(target);
+                          else void acceptCandidate(current, candidate);
+                        }}
                       >
                         <Check size={13} />
-                        {issue.ecusFieldKey
+                        {declarationReviewIssue(issue, candidate)
                           ? locale === "vi"
                             ? "Mở ô cần bổ sung"
                             : "Open field"

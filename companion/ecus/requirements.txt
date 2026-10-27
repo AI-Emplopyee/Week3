@@ -1,0 +1,2 @@
+# Install on the Windows PC running ECUS. Core/fake-UI tests use only stdlib.
+pywinauto==0.6.9; sys_platform == "win32"

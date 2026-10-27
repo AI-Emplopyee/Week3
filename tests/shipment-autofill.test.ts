@@ -196,7 +196,7 @@ test("shipment autofill combines commercial, packing and transport documents wit
   assert.deepEqual(entry(shipment, "1.27").value, {
     kind: "quantity",
     amount: "5",
-    unitCode: "PACKAGES",
+    unitCode: "PK",
   });
   const grossWeight = entry(shipment, "1.28").value;
   assert.equal(grossWeight.kind === "quantity" && grossWeight.amount, "10");

@@ -1440,6 +1440,7 @@ export function applyAction(
         : proposal),
       action.model,
       visionEvidence,
+      pageReadings,
     );
     const selectedPages = pages.map(page => page.page);
     if (kimiOnly) {

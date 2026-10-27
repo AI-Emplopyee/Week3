@@ -30,10 +30,12 @@ Saved records and original files live in **`.aicd-local/state/`**. Keep this dir
 | Client memory | Explicit human corrections to stable importer details; matching-client suggestions with apply, dismiss and stop-suggesting controls | Evaluate additional reusable fields separately from transaction-specific facts |
 | Messages | Imported `.eml` messages, GLM shipment matching, automatic consolidated question drafts, preserved edits and explicit draft approval | Outgoing delivery, live Gmail retrieval and timed follow-ups |
 | Access | Local single-user mode; retained standalone Supabase password adapter with server authorization | Google sign-in, owner-approved access requests and persistent team sessions |
-| ECUS | Immutable reviewed snapshots and a deterministic **test-only** adapter | Actual connection and credentials collected at connection time |
+| ECUS | Export EDA review, server-saved versioned drafts, immutable job queue, paired Windows helper, saved-value comparison and audited recovery/retry; import adapter remains test-only | Calibrate controls and verify a real export draft on the installed ECUS version |
 | Regulations | Explicitly not assessed | Versioned, verified regulations and code tables when provided |
 
-Google sign-in, live Gmail OAuth/synchronization, outgoing email delivery, scheduled follow-ups and real ECUS integration are not implemented. Passing software tests does not establish extraction accuracy on every supplier layout.
+Google sign-in, live Gmail OAuth/synchronization, outgoing email delivery and scheduled follow-ups are not implemented. The new Windows ECUS helper has not been validated on the target installation. Passing software tests does not establish extraction accuracy or real ECUS compatibility.
+
+For exports, choose **Export (EDA)** when creating a shipment (or change its direction in shipment details), then review the separate EDA form. **Save draft** stores unfinished work on the server with version checks and employee history. **Submit to ECUS (EDA)** queues the saved, approved values for a paired Windows computer. The helper opens **Tờ khai hải quan → Đăng ký mới tờ khai xuất khẩu (EDA)**, fills the supported fields, saves an editable draft, reopens it and compares the saved values. Failed or uncertain transfers have an employee recovery screen; an explicit retry retains the original evidence and prevents duplicate recreation. Setup and installation-specific calibration are required before Submit becomes available. See [Windows connection and current limits](docs/windows-companion.md) and [helper setup](companion/ecus/README.md). Restart the local application after updating so migrations `0004_ecus_export_jobs.sql` and `0005_ecus_drafts_and_recovery.sql` are applied, and update the Windows helper alongside it.
 
 ## The shipment workflow
 
@@ -90,6 +92,8 @@ lib/
   ai-result-persistence.ts    Rebase validated AI results without losing human edits
   declaration*.ts            Typed declaration schema, validation and drafts
   ecus-form.ts               Screenshot field mapping and required controls
+  ecus-export.ts             Separate supported EDA fields and frozen approved payload
+  ecus-job-store.ts          Persistent device pairing, queue, leases and result comparison
   client-*.ts                Browser intake, image preparation and edit helpers
   server*.ts                 Request authorization, persistence and file handling
   auth-*.ts                  Identity/session and membership controls
@@ -105,6 +109,7 @@ lib/
   report*.ts                 Review report data and PDF generation
   vnaccs*.ts                 Internal field references and developer exports
 build/                       Application Worker and local request gate
+companion/ecus/               Windows UI Automation helper, calibration profile and tests
 scripts/                     Startup, packaging and verification tools
 db/ + drizzle/               Database schema and migrations
 fixtures/ + tests/           Synthetic verification inputs and regression tests

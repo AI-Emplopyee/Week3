@@ -1,6 +1,6 @@
 {
   "verifiedOn": "2026-10-19",
-  "scope": "Exact representations for clearly evidenced form fields only; no inferred quantities, package classification, payment terms, taxes or human approval.",
+  "scope": "Exact representations for clearly evidenced form fields only; no inferred quantities, package classification, payment terms, taxes or human approval. Explicit package/PKG wording is now separately supported as PK; see docs/verified-form-normalization-sources.json (verified 2026-10-26).",
   "sources": [
     {
       "id": "vnaccs-ccs4eo-v1-p25",
@@ -43,5 +43,5 @@
       }
     }
   ],
-  "exclusions": ["packageUnit", "KGS", "PK", "SET", "AU", "mixed payment phrases", "due dates", "inferred payment methods", "automatic code verification", "manual value replacement"]
+  "exclusions": ["packageUnit inferred from Piece/PCS/PCE (UNECE Rec21 distinguishes Package PK from Piece PP)", "KGS", "PK as a goods quantity unit", "SET", "AU", "mixed payment phrases", "due dates", "inferred payment methods", "automatic code verification", "manual value replacement"]
 }

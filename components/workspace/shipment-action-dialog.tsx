@@ -58,6 +58,7 @@ export function ShipmentActionDialog({
   const [groupMode, setGroupMode] = useState(
     modal.kind === "edit_case" ? current?.caseType || "import" : "move",
   );
+  const [createType, setCreateType] = useState<"import" | "export">("import");
   const documents = state && current ? activeDocs(state, current.id) : [];
   const submitModal = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -65,7 +66,7 @@ export function ShipmentActionDialog({
     let ok = false;
     if (modal.kind === "create") {
       ok = await mutation(
-        { type: "create_case", title: modalText },
+        { type: "create_case", title: modalText, caseType: createType },
         t("Đã tạo hồ sơ mới"),
       );
       if (ok) {
@@ -156,10 +157,15 @@ export function ShipmentActionDialog({
           {modal.kind === "create" ? (
             <>
               <p className="muted">
-                {t(
-                  "Tạo hồ sơ nhập khẩu mới, sau đó bổ sung chứng từ và dữ liệu.",
-                )}
+                {locale === "en" ? "Choose the shipment direction, then add documents and data." : "Chọn chiều vận chuyển, sau đó bổ sung chứng từ và dữ liệu."}
               </p>
+              <label>
+                {locale === "en" ? "Shipment direction" : "Chiều vận chuyển"}
+                <select value={createType} disabled={busy} onChange={event => setCreateType(event.target.value as "import" | "export")}>
+                  <option value="import">{locale === "en" ? "Import (IDA)" : "Nhập khẩu (IDA)"}</option>
+                  <option value="export">{locale === "en" ? "Export (EDA)" : "Xuất khẩu (EDA)"}</option>
+                </select>
+              </label>
               <label>
                 {t("Tên lô hàng")}
                 <input

@@ -1,0 +1,555 @@
+{
+  "schemaVersion": 1,
+  "id": "ecus-eda-installed-version",
+  "direction": "export",
+  "calibrated": false,
+  "calibratedBy": "",
+  "process": {
+    "executable": "C:\\CALIBRATE\\ECUS.exe",
+    "fileVersion": "CALIBRATE",
+    "sha256": "CALIBRATE"
+  },
+  "mainWindowTitle": "CALIBRATE exact main-window title",
+  "exportForm": [
+    {
+      "title": "CALIBRATE actual export editor title",
+      "controlType": "Window"
+    }
+  ],
+  "headers": {
+    "declarationType": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_declarationType",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "customsOffice": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_customsOffice",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "transportMode": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_transportMode",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "exporterCode": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_exporterCode",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "exporterName": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_exporterName",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "exporterAddress": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_exporterAddress",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "exporterTelephone": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_exporterTelephone",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "importerName": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_importerName",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "importerAddress": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_importerAddress",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "importerCountry": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_importerCountry",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "customsAgentCode": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_customsAgentCode",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "cargoIdentification": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_cargoIdentification",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "packageCount": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_packageCount",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "packageUnit": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_packageUnit",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "grossWeight": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_grossWeight",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "grossWeightUnit": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_grossWeightUnit",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "storageLocation": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_storageLocation",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "transportName": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_transportName",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "transportCode": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_transportCode",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "departureDate": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_departureDate",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "loadingLocationCode": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_loadingLocationCode",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "loadingLocationName": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_loadingLocationName",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "unloadingLocationCode": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_unloadingLocationCode",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "unloadingLocationName": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_unloadingLocationName",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "invoiceForm": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_invoiceForm",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "invoiceNumber": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_invoiceNumber",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "invoiceDate": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_invoiceDate",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "paymentMethod": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_paymentMethod",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "incoterm": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_incoterm",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "currency": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_currency",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "invoiceTotal": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_invoiceTotal",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "contractNumber": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_contractNumber",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "contractDate": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_contractDate",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "previousDeclarationNumber": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_previousDeclarationNumber",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    },
+    "remarks": {
+      "selector": [
+        {
+          "autoId": "CALIBRATE_remarks",
+          "controlType": "Edit"
+        }
+      ],
+      "navigation": [],
+      "kind": "value"
+    }
+  },
+  "goods": {
+    "navigation": [],
+    "table": [
+      {
+        "autoId": "CALIBRATE_goods_table",
+        "controlType": "DataGrid"
+      }
+    ],
+    "rowControlType": "DataItem",
+    "addButton": [
+      {
+        "autoId": "CALIBRATE_goods_add",
+        "controlType": "Button"
+      }
+    ],
+    "editButton": [
+      {
+        "autoId": "CALIBRATE_goods_edit",
+        "controlType": "Button"
+      }
+    ],
+    "dialogTitle": "CALIBRATE exact goods-detail dialog title",
+    "fields": {
+      "description": {
+        "selector": [
+          {
+            "autoId": "CALIBRATE_description",
+            "controlType": "Edit"
+          }
+        ],
+        "navigation": [],
+        "kind": "value"
+      },
+      "hsCode": {
+        "selector": [
+          {
+            "autoId": "CALIBRATE_hsCode",
+            "controlType": "Edit"
+          }
+        ],
+        "navigation": [],
+        "kind": "value"
+      },
+      "origin": {
+        "selector": [
+          {
+            "autoId": "CALIBRATE_origin",
+            "controlType": "Edit"
+          }
+        ],
+        "navigation": [],
+        "kind": "value"
+      },
+      "quantity": {
+        "selector": [
+          {
+            "autoId": "CALIBRATE_quantity",
+            "controlType": "Edit"
+          }
+        ],
+        "navigation": [],
+        "kind": "value"
+      },
+      "unit": {
+        "selector": [
+          {
+            "autoId": "CALIBRATE_unit",
+            "controlType": "Edit"
+          }
+        ],
+        "navigation": [],
+        "kind": "value"
+      },
+      "unitPrice": {
+        "selector": [
+          {
+            "autoId": "CALIBRATE_unitPrice",
+            "controlType": "Edit"
+          }
+        ],
+        "navigation": [],
+        "kind": "value"
+      },
+      "amount": {
+        "selector": [
+          {
+            "autoId": "CALIBRATE_amount",
+            "controlType": "Edit"
+          }
+        ],
+        "navigation": [],
+        "kind": "value"
+      },
+      "goodsCode": {
+        "selector": [
+          {
+            "autoId": "CALIBRATE_goodsCode",
+            "controlType": "Edit"
+          }
+        ],
+        "navigation": [],
+        "kind": "value"
+      },
+      "previousDeclarationLine": {
+        "selector": [
+          {
+            "autoId": "CALIBRATE_previousDeclarationLine",
+            "controlType": "Edit"
+          }
+        ],
+        "navigation": [],
+        "kind": "value"
+      }
+    },
+    "saveButton": [
+      {
+        "autoId": "CALIBRATE_goods_save",
+        "controlType": "Button"
+      }
+    ],
+    "closeButton": [
+      {
+        "autoId": "CALIBRATE_goods_cancel_close",
+        "controlType": "Button"
+      }
+    ]
+  },
+  "saveNavigation": [],
+  "saveDraftButton": [
+    {
+      "autoId": "CALIBRATE_save_draft",
+      "title": "Lưu",
+      "controlType": "Button"
+    }
+  ],
+  "saveDraftButtonLabel": "Lưu",
+  "draftReference": [
+    {
+      "autoId": "CALIBRATE_durable_draft_reference",
+      "controlType": "Edit"
+    }
+  ],
+  "draftReferenceKind": "value",
+  "verification": {
+    "closeFormButton": [
+      {
+        "autoId": "CALIBRATE_close_saved_form",
+        "controlType": "Button"
+      }
+    ],
+    "draftsView": [
+      {
+        "autoId": "CALIBRATE_saved_declaration_list",
+        "controlType": "Pane"
+      }
+    ],
+    "table": [
+      {
+        "autoId": "CALIBRATE_saved_declarations",
+        "controlType": "DataGrid"
+      }
+    ],
+    "rowControlType": "DataItem",
+    "referenceCell": [
+      {
+        "autoId": "CALIBRATE_saved_draft_reference_cell",
+        "controlType": "Text"
+      }
+    ],
+    "referenceKind": "text",
+    "openButton": [
+      {
+        "autoId": "CALIBRATE_open_selected_saved_draft",
+        "controlType": "Button"
+      }
+    ]
+  },
+  "exportMarker": [
+    {
+      "autoId": "CALIBRATE_export_direction_label",
+      "controlType": "Text"
+    }
+  ],
+  "exportMarkerText": "Tờ khai xuất khẩu"
+}

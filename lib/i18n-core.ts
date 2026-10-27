@@ -69,7 +69,7 @@ export const EN_TRANSLATIONS: Readonly<Record<string, string>> = {
   "Cần xác định chiều vận chuyển": "Direction needs review",
   "Loại khác": "Other",
   "Hồ sơ xuất khẩu / tái xuất": "Export / re-export collection",
-  "Chứng từ được lưu để tra cứu và trích xuất. Biểu mẫu hiện tại dành cho nhập khẩu; bản khai xuất khẩu sẽ được bổ sung sau.": "Documents are saved for reference and extraction. The current form is for imports; an export declaration form is not available yet.",
+  "Rà soát biểu mẫu xuất khẩu EDA, xác nhận các giá trị và gửi đến máy Windows đã kết nối để tạo bản nháp ECUS.": "Review the EDA export form, confirm its values and send it to the paired Windows computer to create an ECUS draft.",
   "Bộ tài liệu tham khảo": "Reference collection",
   "Đây là tài liệu hỗ trợ, hình ảnh hoặc hồ sơ lịch sử để tra cứu. Không yêu cầu điền đủ một tờ khai nhập khẩu cho bộ tài liệu này.": "These are supporting documents, images or historical records for reference. They do not require a completed import declaration.",
   "Cần xác định lô hàng và chiều vận chuyển": "Shipment and direction need review",
