@@ -8,6 +8,7 @@ export const JOB_IDENTITY = 'workspace_id = ? AND document_id = ? AND document_v
 export function jobIdentity(workspaceId: string, document: Pick<ShipmentDocument, 'id' | 'version' | 'sha256'>, page: number) { return [workspaceId, document.id, document.version, document.sha256, page] as const; }
 export const CLAIM_JOB_SQL = `UPDATE ai_processing_jobs SET state = 'running', lease_token = ?, lease_until = ?, started_at = ?, completed_at = NULL, elapsed_ms = NULL, error = NULL, attempts = attempts + 1
 WHERE ${JOB_IDENTITY} AND available_at <= ? AND (state = 'queued' OR (state = 'running' AND lease_until <= ?) OR (? = 1 AND state IN ('completed', 'failed')))
+AND NOT EXISTS (SELECT 1 FROM deleted_case_documents deleted WHERE deleted.workspace_id = ai_processing_jobs.workspace_id AND deleted.document_id = ai_processing_jobs.document_id)
 AND NOT EXISTS (SELECT 1 FROM ai_processing_jobs other WHERE other.workspace_id = ai_processing_jobs.workspace_id AND other.document_id = ai_processing_jobs.document_id AND other.state = 'running' AND other.lease_until > ?)
 AND (SELECT COUNT(*) FROM ai_processing_jobs active WHERE active.workspace_id = ai_processing_jobs.workspace_id AND active.state = 'running' AND active.lease_until > ?) < ? RETURNING lease_token`;
 
@@ -21,7 +22,11 @@ export function automaticDocuments(state: WorkspaceState): ShipmentDocument[] {
   return state.documents.filter(document => liveCases.has(document.caseId) && document.active && !document.referenceOnly && !!document.blobKey && !['unsupported', 'failed'].includes(document.extractionStatus) && document.pages.some(page => automaticPageNeedsKimi(state, document, page)));
 }
 export async function enqueuePage(db: D1Database, workspaceId: string, document: Pick<ShipmentDocument, 'id' | 'version' | 'sha256'>, page: number) {
-  await db.prepare('INSERT OR IGNORE INTO ai_processing_jobs (workspace_id, document_id, document_version, sha256, page) VALUES (?, ?, ?, ?, ?)').bind(...jobIdentity(workspaceId, document, page)).run();
+  // A poll/extraction request can still hold an old workspace after deletion.
+  // The tombstone is committed with deletion, so stale readers cannot recreate jobs.
+  await db.prepare(`INSERT OR IGNORE INTO ai_processing_jobs (workspace_id, document_id, document_version, sha256, page)
+    SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM deleted_case_documents WHERE workspace_id = ? AND document_id = ?)`)
+    .bind(...jobIdentity(workspaceId, document, page), workspaceId, document.id).run();
 }
 export async function claimAiJob(db: D1Database, workspaceId: string, document: Pick<ShipmentDocument, 'id' | 'version' | 'sha256'>, page: number, manual = false, now = Date.now()): Promise<string | null> {
   await enqueuePage(db, workspaceId, document, page);

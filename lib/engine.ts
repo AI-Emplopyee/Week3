@@ -1,4 +1,5 @@
 import { DEFAULT_DOCUMENT_MODEL, ZAI_ENDPOINT } from './ai-provider.ts';
+import { caseSequence, deleteCase } from './case-deletion.ts';
 import { documentSourceReady } from './source-completeness.ts';
 import { clientMemorySaveAction, dismissOrRevokeClientMemory, getClientIdentity, rememberClientCorrection } from './client-memory.ts';
 import { applyEmailGroupingAction } from './email-grouping.ts';
@@ -284,9 +285,10 @@ function newCase(
   type: ShipmentCase["caseType"] = "import",
 ) {
   const at = now();
+  state.caseSequence = caseSequence(state) + 1;
   const c: ShipmentCase = {
     id: uid("case"),
-    reference: `AICD-${String(state.cases.length + 1).padStart(4, "0")}`,
+    reference: `AICD-${String(state.caseSequence).padStart(4, "0")}`,
     title: title.trim() || "Lô hàng mới",
     status: "review",
     caseType: type,
@@ -670,7 +672,6 @@ function regroupDocuments(
   options: {
     newIds?: string[];
     caseIds?: string[];
-    targetCaseId?: string;
     focusCaseId?: string;
   } = {},
 ) {
@@ -701,20 +702,6 @@ function regroupDocuments(
     ),
   ]);
   const groups = groupShipmentDocuments(documents, evidence, allowedCases);
-  const incomingGroups = groups.filter((group) =>
-    group.documentIds.some((id) => newIds.has(id)),
-  );
-  const emptyTarget = options.targetCaseId
-    ? allowedCases.find(
-        (c) => c.id === options.targetCaseId && !documentsFor(state, c).length,
-      )
-    : undefined;
-  if (
-    emptyTarget &&
-    incomingGroups.length === 1 &&
-    !incomingGroups[0].caseIds.length
-  )
-    incomingGroups[0].caseIds.push(emptyTarget.id);
   for (const group of groups) {
     // A page reread may discover a genuinely related shipment, but must not
     // refresh unrelated histories merely because grouping considers all evidence.
@@ -811,7 +798,9 @@ function addUploads(
   sourceCollection?: SourceCollection,
 ) {
   const added: string[] = [];
-  if (targetCaseId) assertReviewable(findCase(state, targetCaseId));
+  const target = targetCaseId ? findCase(state, targetCaseId) : undefined;
+  if (target) assertReviewable(target);
+  const previousTargetCandidates = target ? structuredClone(candidatesFor(state, target.id)) : [];
   // A historical folder is a provisional packet, not proof of one customs movement.
   let packet = sourceCollection ? state.cases.find(c => !c.mergedInto && c.sourceCollection?.name === sourceCollection.name && c.sourceCollection.folder === sourceCollection.folder) : undefined;
   if (sourceCollection && targetCaseId) throw new Error('A collection packet cannot target a live shipment.');
@@ -857,7 +846,27 @@ function addUploads(
       })),
     );
   }
-  if (added.length && sourceCollection) {
+  if (added.length && target) {
+    // An upload from inside a case is an explicit destination, including for
+    // unread documents and export/reference cases. Evidence can question that
+    // choice, but later automatic grouping must not move the case away.
+    target.groupingMode = 'manual';
+    for (const id of added) {
+      const document = state.documents.find(d => d.id === id)!;
+      document.caseId = target.id;
+      target.documentIds.push(id);
+      for (const candidate of state.candidates.filter(item => item.documentId === id)) candidate.caseId = target.id;
+    }
+    const [group] = groupShipmentDocuments(documentsFor(state, target), candidatesFor(state, target.id), [{ ...target, groupingConfirmed: false }]);
+    target.groupingConfirmed = group.confirmed;
+    target.groupingConfidence = group.confirmed ? 'high' : 'low';
+    target.groupingReason = group.reason;
+    refreshAfterGrouping(state, target, actor, previousTargetCandidates, true);
+    target.updatedAt = now();
+    audit(state, actor, 'documents_added_to_case', 'Người dùng chọn hồ sơ nhận chứng từ. Giữ nguyên hồ sơ đích khi AI đọc hoặc đối chiếu lại.', {
+      caseId: target.id, after: { documentIds: added },
+    });
+  } else if (added.length && sourceCollection) {
     packet ??= newCase(state, sourceCollection.folder.slice(0, 200), actor, sourceCollection.caseType ?? "unknown");
     if (!packet.sourceCollection && sourceCollection.caseType) packet.caseType = sourceCollection.caseType;
     packet.sourceCollection = { ...structuredClone(sourceCollection), caseType: packet.caseType };
@@ -872,7 +881,7 @@ function addUploads(
     refreshAfterGrouping(state, packet, actor, previousPacketCandidates, true);
     packet.updatedAt = now();
     audit(state, actor, 'source_collection_received', packet.groupingReason, {caseId: packet.id, after: {sourceCollection, documentIds: added}});
-  } else if (added.length) regroupDocuments(state, actor, { newIds: added, targetCaseId });
+  } else if (added.length) regroupDocuments(state, actor, { newIds: added });
   for (const id of added) {
     const document = state.documents.find((d) => d.id === id)!;
     const c = findCase(state, document.caseId);
@@ -1408,6 +1417,8 @@ export function applyAction(
   } else if (action.type === "create_case") {
     if (!present(action.title)) throw new Error("Cần tên hồ sơ.");
     newCase(state, action.title, actor, action.caseType);
+  } else if (action.type === "delete_case") {
+    deleteCase(state, action.caseId, action.confirmed, actor);
   } else if (action.type === "add_ai_candidates") {
     // Internal server-only action. The public mutation schema deliberately does not expose it.
     const c = findCase(state, action.caseId);
@@ -2011,6 +2022,7 @@ export function applyAction(
     }
     for (const id of affected) {
       const c = findCase(state, id);
+      c.groupingMode = 'manual';
       invalidate(state, c, actor, "Chứng từ được chuyển / ghép hồ sơ.");
       c.groupingConfirmed = false;
       c.groupingConfidence = "medium";
@@ -2343,7 +2355,7 @@ export function applyAction(
       { before, after: state.settings },
     );
   } else throw new Error("Hành động không được hỗ trợ.");
-  if (action.type !== 'refresh_case_automation') {
+  if (action.type !== 'refresh_case_automation' && action.type !== 'delete_case') {
     const clientMemoryChanged = (state.clientMemories?.length ?? 0) !== (original.clientMemories?.length ?? 0) || action.type === 'revoke_client_memory';
     const actionCaseId = 'caseId' in action ? action.caseId : 'draftId' in action ? state.emailDrafts?.find(draft => draft.id === action.draftId)?.caseId : undefined;
     // Grouping may move this action's evidence into an older related shipment.

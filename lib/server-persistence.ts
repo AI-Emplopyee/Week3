@@ -47,8 +47,9 @@ function serialize(state: WorkspaceState, expectedRevision: number): { text: str
   return { text, bytes };
 }
 
-function commitStatement(db: D1Database, state: WorkspaceState, expectedRevision: number, actor: Actor, text: string): D1PreparedStatement {
-  return db.prepare(COMMIT_SQL).bind(text, state.revision, new Date().toISOString(), state.id, expectedRevision, actor.id);
+export type WorkspaceCommitGuard = { sql: string; values: (string | number)[] };
+function commitStatement(db: D1Database, state: WorkspaceState, expectedRevision: number, actor: Actor, text: string, guard?: WorkspaceCommitGuard): D1PreparedStatement {
+  return db.prepare(COMMIT_SQL + (guard ? ` AND (${guard.sql})` : '')).bind(text, state.revision, new Date().toISOString(), state.id, expectedRevision, actor.id, ...(guard?.values ?? []));
 }
 
 /** Compatibility helper for callers that explicitly require an inline state. */
@@ -76,7 +77,7 @@ function splitUtf8(bytes: Uint8Array): string[] {
  * Failed CAS operations neither insert chunks nor delete an existing snapshot.
  * D1 rolls the whole transaction back if any subsequent statement fails.
  */
-export function prepareWorkspaceCommit(db: D1Database, state: WorkspaceState, expectedRevision: number, actor: Actor): D1PreparedStatement[] {
+export function prepareWorkspaceCommit(db: D1Database, state: WorkspaceState, expectedRevision: number, actor: Actor, commitGuard?: WorkspaceCommitGuard): D1PreparedStatement[] {
   const { text, bytes } = serialize(state, expectedRevision);
   const chunks = bytes.length > INLINE_WORKSPACE_BYTES ? splitUtf8(bytes) : [];
   const snapshotId = chunks.length ? crypto.randomUUID() : '';
@@ -90,7 +91,7 @@ export function prepareWorkspaceCommit(db: D1Database, state: WorkspaceState, ex
   const stored = chunks.length ? JSON.stringify(manifest) : text;
   const guard = [state.id, state.revision, stored, actor.id];
   return [
-    commitStatement(db, state, expectedRevision, actor, stored),
+    commitStatement(db, state, expectedRevision, actor, stored, commitGuard),
     ...chunks.map((content, index) => db.prepare(insertChunkSql).bind(state.id, snapshotId, index, content, ...guard)),
     db.prepare(deleteOldChunksSql).bind(state.id, snapshotId, ...guard),
   ];

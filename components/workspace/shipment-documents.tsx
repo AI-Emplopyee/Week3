@@ -18,7 +18,6 @@ import {
   Download,
   FileText,
   GitBranch,
-  Plus,
   Search,
   Upload,
 } from "lucide-react";
@@ -100,12 +99,13 @@ export function ShipmentDocuments({
           <span>{documents.length}</span>
         </h2>
         <button
-          className="icon-button"
+          className="button secondary"
           aria-label={t("Tải thêm chứng từ")}
           disabled={busy || !editable}
           onClick={() => onUpload()}
         >
-          <Plus size={17} />
+          <Upload size={15} />
+          {t("Tải chứng từ")}
         </button>
       </div>
       {current.sourceCollection && (

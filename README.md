@@ -19,6 +19,10 @@ Local mode is a single-user development workspace, not a shared team login. It r
 
 Saved records and original files live in **`.aicd-local/state/`**. Keep this directory when updating source. The navigation and runtime cleanup does not change its database identity, object-storage name, or state location. [Local setup and backups](docs/local-setup.md).
 
+**Adding documents:** Open a case and choose **Documents → Upload documents** to add files to that exact case. Select several files together, drag them into the upload dialog, or use **Add more files** to collect files from different folders before uploading. The dialog shows the destination, selected files and limits (20 files, 20 MiB per file, 22 MiB per request). AI processing keeps this manually chosen case; conflicting evidence still requires review. Uploading from the main shipment list retains automatic grouping. Duplicate originals stay in their existing case, identified in the upload notice; use **Merge / split / move** to reorganize them deliberately.
+
+**Deleting a case:** The workspace owner can choose **Delete case**, continue to a second confirmation, then choose **Yes, delete permanently**. Cancel on either screen leaves the case intact. Deletion removes the case, its documents and saved drafts; shared original emails and audit history remain. Existing ECUS drafts are unchanged, and active or unresolved ECUS transfers must be resolved first. Restart after updating to apply migration `0006_case_file_cleanup.sql`, which also makes file cleanup retryable and prevents background work from recreating deleted files.
+
 ## Current capabilities and next work
 
 | Area | Implemented now | Next product step |

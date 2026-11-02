@@ -94,6 +94,7 @@ export async function upload(request: Request): Promise<Response> {
   } catch { throw new ApiError(400, 'Invalid batch document metadata. Each file must have matching bounded page data.'); }
   const documents: UploadedDocument[] = [];
   const emails: EmailRecord[] = [];
+  const skippedOriginals = new Map<string, { name: string; caseId: string }>();
   const storedKeys: string[] = [];
   const storage = bucket();
   const writeOriginal = async (id: string, data: Uint8Array, mime: string) => {
@@ -101,7 +102,15 @@ export async function upload(request: Request): Promise<Response> {
     await storage.put(key, data, { httpMetadata: { contentType: mime } });
     storedKeys.push(key); return key;
   };
-  const findDuplicate = (sha256: string) => documents.find(document => document.sha256 === sha256) ?? context.state.documents.find(document => document.sha256 === sha256);
+  const findDuplicate = (sha256: string) => {
+    const existing = context.state.documents.find(document => document.sha256 === sha256);
+    if (existing) skippedOriginals.set(existing.id, { name: existing.name, caseId: existing.caseId });
+    return documents.find(document => document.sha256 === sha256) ?? existing;
+  };
+  const duplicateNotice = () => skippedOriginals.size ? `These originals are already saved and were not added again: ${[...skippedOriginals.values()].map(document => {
+    const shipment = context.state.cases.find(item => item.id === document.caseId);
+    return `${document.name} (${shipment ? `${shipment.reference} — ${shipment.title}` : document.caseId})`;
+  }).join('; ')}` : undefined;
   let committed = false;
   try {
     for (const [index, file] of files.entries()) {
@@ -163,7 +172,7 @@ export async function upload(request: Request): Promise<Response> {
       }
       emails.push(email);
     }
-    if (!documents.length && !emails.length) return json({ ...response(context), notice: 'These original documents are already in the workspace. No duplicates were created.' });
+    if (!documents.length && !emails.length) return json({ ...response(context), notice: duplicateNotice() ?? 'These original documents are already in the workspace. No duplicates were created.' });
     // PDF/image vision runs after originals are committed and grouped. Do not pay
     // for a separate text-only pass that cannot see tables or OCR errors.
     const aiConfigured = kimiStatus(documentAiConfiguration(env)).configured;
@@ -189,7 +198,7 @@ export async function upload(request: Request): Promise<Response> {
         catch { return json({ ...response(context), notice: reason }); }
       }
     }
-    return json(result);
+    return json({ ...result, ...(duplicateNotice() ? { notice: duplicateNotice() } : {}) });
   } catch (error) {
     if (!committed && storedKeys.length) await storage.delete(storedKeys).catch(() => undefined);
     throw error;

@@ -56,6 +56,14 @@ async function send(raw: string, name = 'reply.eml') {
   form.append('documents', JSON.stringify([{ name, pages: [], extractionStatus: 'extracted', attachments: [] }]));
   return upload(new Request('https://aicd.invalid/api/upload', { method: 'POST', headers: { origin: 'https://aicd.invalid' }, body: form }));
 }
+async function sendFiles(files: { name: string; text: string }[], targetCaseId?: string) {
+  const form = new FormData();
+  for (const file of files) form.append('file', new File([file.text], file.name, { type: 'text/plain' }));
+  form.append('revision', String(globals[fixtureKey]!.context.state.revision));
+  form.append('documents', JSON.stringify(files.map(file => ({ name: file.name, pages: [], extractionStatus: 'pending_ai' }))));
+  if (targetCaseId) form.append('targetCaseId', targetCaseId);
+  return upload(new Request('https://aicd.invalid/api/upload', { method: 'POST', headers: { origin: 'https://aicd.invalid' }, body: form }));
+}
 const plain = (body: string) => `From: sender@example.invalid\r\nSubject: Shipment follow-up\r\nMessage-ID: <reply-1@example.invalid>\r\nIn-Reply-To: <first@example.invalid>\r\nReferences: <first@example.invalid>\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n${body}`;
 
 test('body-only email preserves exact EML and text without creating a document or provisional shipment', async () => {
@@ -111,4 +119,49 @@ test('PDF upload disregards client extraction claims and stores only original pa
   assert.equal(document.pages.length, 1); assert.equal(document.pages[0].text, '');
   assert.ok(!JSON.stringify(document).includes('CLIENT-FAKE')); assert.ok(!JSON.stringify(document).includes('OCR-FAKE'));
   assert.deepEqual(fixture.originals.get(document.blobKey!), bytes);
+});
+
+test('multipart batch uploads attach every original to the selected case before AI reads them', async () => {
+  const state = applyAction(createEmptyWorkspace('selected-upload'), { type: 'create_case', title: 'Chosen export', caseType: 'export' }, actor);
+  const fixture = reset(state); const caseId = state.cases[0].id;
+  const files = [
+    { name: 'invoice.txt', text: 'Invoice Number: INV-A' },
+    { name: 'packing.txt', text: 'Packing List: PKG-A' },
+    { name: 'bill.txt', text: 'Bill of lading: BILL-A' },
+  ];
+  assert.equal((await sendFiles(files, caseId)).status, 200);
+  assert.equal(fixture.context.state.cases.length, 1);
+  assert.equal(fixture.context.state.cases[0].caseType, 'export');
+  assert.equal(fixture.context.state.documents.length, 3);
+  assert.equal(fixture.originals.size, 3);
+  assert.ok(fixture.context.state.documents.every(document => document.caseId === caseId && document.extractionStatus === 'pending_ai'));
+});
+
+test('a duplicate in another case stays there and its existing location is reported alongside a new targeted original', async () => {
+  const fixture = reset(); const original = { name: 'invoice.txt', text: 'Invoice Number: INV-A' };
+  await sendFiles([original]);
+  const first = structuredClone(fixture.context.state.cases[0]);
+  const existing = structuredClone(fixture.context.state.documents[0]);
+  fixture.context.state = applyAction(fixture.context.state, { type: 'create_case', title: 'Second case' }, actor);
+  const targetId = fixture.context.state.cases[1].id;
+  const result = await sendFiles([original, { name: 'packing.txt', text: 'Packing List: PKG-A' }], targetId);
+  const body = await result.json() as { notice: string };
+  assert.match(body.notice, /invoice\.txt/);
+  assert.ok(body.notice.includes(first.reference));
+  assert.ok(body.notice.includes(first.title));
+  assert.equal(fixture.context.state.documents.length, 2);
+  assert.equal(fixture.originals.size, 2);
+  assert.deepEqual(fixture.context.state.documents.find(document => document.id === existing.id), existing);
+  assert.equal(fixture.context.state.documents.find(document => document.name === 'packing.txt')!.caseId, targetId);
+});
+
+test('upload to a completed or absent destination rejects the whole batch before storing originals', async () => {
+  const state = applyAction(createEmptyWorkspace('closed-upload'), { type: 'create_case', title: 'Closed case' }, actor);
+  state.cases[0].status = 'completed';
+  const fixture = reset(state);
+  for (const caseId of [state.cases[0].id, 'case-missing']) {
+    await assert.rejects(() => sendFiles([{ name: 'invoice.txt', text: 'Invoice Number: INV-A' }], caseId), /Open shipment case not found/);
+    assert.equal(fixture.originals.size, 0);
+    assert.equal(fixture.context.state.documents.length, 0);
+  }
 });

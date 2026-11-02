@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  applyAction as applyRealAction,
   createEmptyWorkspace,
   getIssues,
   getProposedFields,
@@ -365,7 +366,7 @@ test("regrouping preserves decisions from both source cases without silently rep
   );
   state = applyAction(
     state,
-    { type: "intake", targetCaseId: second.id, documents: [packet()[3]] },
+    { type: "intake", documents: [packet()[3]] },
     actor,
   );
   state = applyAction(state, { type: "regroup_existing" }, actor);
@@ -445,7 +446,7 @@ test("conflicting generic bills and commercial identities override shared invoic
   assert.equal(grouped([containerA, containerB]).length, 2);
 });
 
-test("navigation target cannot force unrelated or contradictory attachments into an existing shipment", () => {
+test("explicit case uploads retain contradictory documents in the selected case and flag the conflict", () => {
   let state = applyAction(
     createEmptyWorkspace("navigation-target"),
     { type: "intake", documents: packet() },
@@ -461,11 +462,75 @@ test("navigation target cannot force unrelated or contradictory attachments into
     { type: "intake", targetCaseId: caseId, documents: [other] },
     actor,
   );
-  assert.equal(activeCount(state), 2);
-  assert.notEqual(
+  assert.equal(activeCount(state), 1);
+  assert.equal(
     state.documents.find((d) => d.id === other.id)!.caseId,
     caseId,
   );
+  assert.equal(state.cases[0].groupingMode, 'manual');
+  assert.equal(state.cases[0].groupingConfirmed, false);
+  assert.ok(getIssues(state, caseId).some(issue => issue.kind === 'grouping'));
+  assert.ok(getIssues(state, caseId).some(issue => issue.kind === 'conflict' && issue.field === 'houseBillOfLading'));
+});
+
+test("all unread files in an explicit batch stay in empty and populated import, export and reference cases", () => {
+  for (const caseType of ['import', 'export', 'reference'] as const) {
+    let state = applyRealAction(createEmptyWorkspace(`target-${caseType}`), { type: 'create_case', title: 'Chosen shipment', caseType }, actor);
+    const id = state.cases[0].id;
+    for (const batch of [1, 2]) {
+      const documents = ['invoice', 'packing', 'transport'].map(kind => ({
+        ...upload(`${caseType}-${batch}-${kind}`, ''), extractionPipeline: 'kimi' as const, extractionStatus: 'pending_ai' as const,
+      }));
+      state = applyRealAction(state, { type: 'intake', targetCaseId: id, documents }, actor);
+      assert.equal(activeCount(state), 1);
+      assert.equal(state.cases[0].title, 'Chosen shipment');
+      assert.equal(state.cases[0].caseType, caseType);
+      assert.equal(state.cases[0].documentIds.length, batch * 3);
+      assert.ok(state.documents.every(document => document.caseId === id));
+      assert.equal(state.cases[0].groupingConfirmed, false, 'Choosing a destination does not prove unread contents agree.');
+    }
+  }
+});
+
+test("AI reading and later regrouping cannot merge an explicitly selected case into an older matching shipment", () => {
+  let state = applyAction(createEmptyWorkspace('manual-target-stays'), { type: 'intake', documents: [packet()[0]] }, actor);
+  const olderId = state.cases[0].id;
+  state = applyRealAction(state, { type: 'create_case', title: 'Explicit destination' }, actor);
+  const targetId = state.cases[1].id;
+  const later = { ...upload('targeted-later-invoice', packet()[0].pages[0].text), extractionPipeline: 'kimi' as const, extractionStatus: 'pending_ai' as const };
+  state = applyRealAction(state, { type: 'intake', targetCaseId: targetId, documents: [later] }, actor);
+  state = applyRealAction(state, {
+    type: 'add_ai_candidates', caseId: targetId, documentId: later.id, documentVersion: 1,
+    model: 'synthetic-model', pages: [1], pageReadings: [{ page: 1, documentType: 'invoice', readability: 'clear' }],
+    proposals: [
+      { field: 'invoiceNumber', value: 'TEST-INV-101', quote: 'Invoice Number: TEST-INV-101', page: 1, confidence: 'high' },
+      { field: 'importer', value: 'Fictional Buyer Co', quote: 'Importer: Fictional Buyer Co', page: 1, confidence: 'high' },
+    ],
+  }, actor);
+  state = applyRealAction(state, { type: 'regroup_existing' }, actor);
+  assert.equal(activeCount(state), 2);
+  assert.equal(state.documents.find(document => document.id === later.id)!.caseId, targetId);
+  assert.equal(state.documents.find(document => document.id === 'invoice')!.caseId, olderId);
+  assert.equal(state.cases.find(shipment => shipment.id === targetId)!.mergedInto, undefined);
+});
+
+test("targeted additions invalidate approval while retaining human decisions and the prior state", () => {
+  let state = applyAction(createEmptyWorkspace('target-review'), { type: 'intake', documents: packet() }, actor);
+  const id = state.cases[0].id;
+  state = applyAction(state, { type: 'review_field', caseId: id, field: 'customsProcedure', value: 'TEST-A', reason: 'Explicit human decision.' }, actor);
+  state = applyAction(state, { type: 'review_field', caseId: id, field: 'invoiceTotal', value: '100', reason: 'Reviewed invoice total.' }, actor);
+  const beforeDecision = structuredClone(state.cases[0].fields.customsProcedure);
+  state.cases[0].status = 'approved';
+  state.cases[0].approval = { actor: actor.name, at: '2026-10-01', snapshotId: 'test-snapshot' };
+  const before = structuredClone(state);
+  state = applyAction(state, { type: 'intake', targetCaseId: id, documents: [upload('target-contradiction', `COMMERCIAL INVOICE\nInvoice Number: TEST-INV-101\n${parties}\nInvoice Total: 120`)] }, actor);
+  assert.equal(state.cases[0].status, 'review');
+  assert.equal(state.cases[0].approval, undefined);
+  assert.deepEqual(state.cases[0].fields.customsProcedure, beforeDecision);
+  assert.equal(state.cases[0].fields.invoiceTotal.value, '100');
+  assert.equal(state.cases[0].fields.invoiceTotal.stale, true);
+  assert.equal(before.cases[0].approval?.snapshotId, 'test-snapshot');
+  assert.ok(state.audit.some(entry => entry.action === 'approval_invalidated' && entry.caseId === id));
 });
 
 test("adding an alternate invoice table cannot duplicate or replace reviewed goods", () => {

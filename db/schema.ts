@@ -17,6 +17,19 @@ export const workspaceStateChunks = sqliteTable('workspace_state_chunks', {
   content: text('content').notNull(),
 }, table => [primaryKey({ columns: [table.workspaceId, table.snapshotId, table.chunkIndex] })]);
 
+export const caseFileCleanup = sqliteTable('case_file_cleanup', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  planJson: text('plan_json').notNull(),
+  createdAt: text('created_at').notNull(),
+}, table => [index('case_file_cleanup_workspace').on(table.workspaceId)]);
+
+export const deletedCaseDocuments = sqliteTable('deleted_case_documents', {
+  workspaceId: text('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  documentId: text('document_id').notNull(),
+  cleanupVision: integer('cleanup_vision').notNull().default(1),
+}, table => [primaryKey({ columns: [table.workspaceId, table.documentId] })]);
+
 export const workspaceMembers = sqliteTable('workspace_members', {
   workspaceId: text('workspace_id').notNull().references(() => workspaces.id),
   email: text('email').notNull(),

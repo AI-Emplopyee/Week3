@@ -23,7 +23,7 @@ export function ModalShell({
   return (
     <dialog
       ref={dialog}
-      onCancel={onClose}
+      onCancel={event => { event.preventDefault(); onClose(); }}
       className={`modal ${wide ? "wide-modal" : ""}`}
     >
       <div className="modal-header">

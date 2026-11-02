@@ -49,6 +49,7 @@ export const actionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('save_email_draft'), draftId: id, recipient: z.union([z.string().trim().email().max(320), z.literal('')]).optional(), subject: z.string().trim().min(1).max(500), body: z.string().trim().min(1).max(20000) }).strict(),
   z.object({ type: z.literal('approve_email_draft'), draftId: id }).strict(),
   z.object({ type: z.literal('seed_demo') }).strict(),
+  z.object({ type: z.literal('delete_case'), caseId: id, confirmed: z.literal(true) }).strict(),
   z.object({ type: z.literal('create_case'), title: z.string().trim().min(1).max(200), caseType: caseType.optional() }).strict(),
   z.object({ type: z.literal('review_field'), caseId: id, field: z.string().min(1).max(100), value: text, candidateId: evidenceId.optional(), reason }).strict(),
   z.object({ type: z.literal('review_goods'), caseId: id, goods: z.array(goods).max(500), reviewedLineIds: z.array(evidenceId).max(500).optional(), reason }).strict(),

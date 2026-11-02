@@ -179,6 +179,10 @@ export function groupShipmentDocuments(
   const canAutomaticallyCombine = (a: Profile, b: Profile) => {
     const existing = [...new Set([...a.caseIds, ...b.caseIds])];
     if (!existing.length) return true;
+    // A reviewer chose these case boundaries through targeted upload or an
+    // explicit move/merge. AI may add corroborating new originals, but joining
+    // two existing cases still requires the reviewer to choose that operation.
+    if (existing.length > 1 && existing.some(id => casesById.get(id)?.groupingMode === 'manual')) return false;
     const types = existing.map((id) => casesById.get(id)?.caseType);
     // Identifiers may be reused across an import and later re-export. An
     // unresolved direction or reference collection never establishes a new link.
@@ -304,7 +308,9 @@ export function groupShipmentDocuments(
               ? evidence.join(" ")
               : priorConfirmed
                 ? cases.find((c) => c.id === p.caseIds[0])!.groupingReason
-                : "Chưa có đủ định danh và thông tin đối chiếu duy nhất; chứng từ được giữ riêng để xác nhận.",
+                : p.caseIds.length === 1 && casesById.get(p.caseIds[0])?.groupingMode === 'manual'
+                  ? "Chứng từ được thêm vào hồ sơ đã chọn; cần đối chiếu nội dung để xác nhận cùng lô hàng."
+                  : "Chưa có đủ định danh và thông tin đối chiếu duy nhất; chứng từ được giữ riêng để xác nhận.",
       };
     })
     .sort((a, b) => a.documentIds[0].localeCompare(b.documentIds[0]));

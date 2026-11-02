@@ -4,6 +4,7 @@ import { AuthError, supabaseConfig } from '@/lib/auth-provider';
 import { requireAuthActor, runtimeAuthMode } from '@/lib/server-auth';
 import { applyAction, createEmptyWorkspace, getIssues, initializeDeclarationDrafts } from '@/lib/engine';
 import { commitSucceeded, prepareWorkspaceCommit, readWorkspaceState } from '@/lib/server-persistence';
+import { CASE_DELETION_BLOCKED, caseDeletionCommitGuard, caseDeletionGuard, cleanupDeletedCaseFiles, planCaseDeletion, prepareCaseDeletionCleanup } from '@/lib/case-deletion';
 import { MAX_JSON_BYTES, MAX_WORKSPACE_BYTES, parseId, sameOrigin } from '@/lib/server-validation';
 import type { Action, Actor, WorkspaceResponse, WorkspaceState } from '@/lib/types';
 
@@ -91,6 +92,10 @@ export async function workspace(request: Request): Promise<WorkspaceContext> {
   if (!membership) throw new ApiError(403, 'Workspace membership is required.');
   const stored = await readWorkspaceState(db, membership.workspace_id, actor.id);
   if (!stored) throw new ApiError(404, 'Workspace not found.');
+  if (env.BUCKET) {
+    try { await cleanupDeletedCaseFiles(db, env.BUCKET, stored.id); }
+    catch (error) { console.error('Case file cleanup will retry:', error instanceof Error ? error.message : 'Unknown storage error'); }
+  }
   const state = initializeDeclarationDrafts(stored);
   return { db, state, actor, role: membership.role };
 }
@@ -106,18 +111,36 @@ export function assertWorkspaceSize(state: WorkspaceState): void {
 export async function mutate(context: WorkspaceContext, expected: number, action: Action): Promise<WorkspaceResponse> {
   expectRevision(context, expected);
   if (action.type === 'settings' && context.role !== 'owner') throw new ApiError(403, 'Only the workspace owner can change settings.');
+  if (action.type === 'delete_case' && context.role !== 'owner') throw new ApiError(403, 'Only the workspace owner can delete a case.');
   let next: WorkspaceState;
   try { next = applyAction(context.state, action, context.actor); }
   catch (error) { throw new ApiError(422, error instanceof Error ? error.message : 'This action is not valid for the current case.'); }
   next.revision = expected + 1;
   assertWorkspaceSize(next);
-  const results = await context.db.batch(prepareWorkspaceCommit(context.db, next, expected, context.actor));
+  const deletion = action.type === 'delete_case' ? planCaseDeletion(context.state, action.caseId) : undefined;
+  const transferGuard = deletion ? caseDeletionGuard(context.state.id, deletion.caseIds) : undefined;
+  if (transferGuard && !await context.db.prepare(`SELECT 1 WHERE ${transferGuard.sql}`).bind(...transferGuard.values).first()) throw new ApiError(422, CASE_DELETION_BLOCKED);
+  const commitGuard = deletion ? caseDeletionCommitGuard(context.state.id, deletion.caseIds, context.actor.id) : undefined;
+  const results = await context.db.batch([
+    ...prepareWorkspaceCommit(context.db, next, expected, context.actor, commitGuard),
+    ...(deletion ? prepareCaseDeletionCleanup(context.db, next, context.actor, deletion) : []),
+  ]);
   if (!commitSucceeded(results[0])) {
     const stored = await readWorkspaceState(context.db, context.state.id, context.actor.id);
     if (!stored) throw new ApiError(403, 'Workspace membership is required.');
     context.state = initializeDeclarationDrafts(stored);
+    if (deletion && !await context.db.prepare("SELECT 1 FROM workspace_members WHERE workspace_id = ? AND user_id = ? AND role = 'owner'").bind(context.state.id, context.actor.id).first()) throw new ApiError(403, 'Only the workspace owner can delete a case.');
+    if (transferGuard && !await context.db.prepare(`SELECT 1 WHERE ${transferGuard.sql}`).bind(...transferGuard.values).first()) throw new ApiError(422, CASE_DELETION_BLOCKED);
     throw new ApiError(409, 'The workspace changed in another session. Review the latest state before trying again.', response(context));
   }
   context.state = next;
+  if (deletion && (deletion.originalKeys.length || deletion.visionPrefixes.length)) {
+    try { await cleanupDeletedCaseFiles(context.db, bucket(), next.id); }
+    catch (error) {
+      // The saved deletion remains authoritative even if separate object storage
+      // is unavailable. The durable cleanup queue retries on the next visit.
+      console.error('Case deleted; original file cleanup will retry:', error instanceof Error ? error.message : 'Unknown storage error');
+    }
+  }
   return response(context);
 }

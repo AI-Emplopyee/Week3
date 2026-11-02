@@ -4,6 +4,7 @@ import { consumeRateLimit } from '@/lib/auth-persistence';
 import { ApiError, bucket, expectRevision, json, privateHeaders, readLimitedBytes, requireSameOrigin, workspace } from '@/lib/server';
 import { imageHashSchema, isVisualDocument, jpegDimensions, sha256Hex, VISION_LIMITS, visionBlobKey, visionReferenceSchema, type KimiPageImage } from '@/lib/vision';
 import type { ShipmentDocument } from '@/lib/types';
+import { storeVisionPage } from '@/lib/vision-storage';
 
 const id = z.string().min(1).max(160).regex(/^[a-zA-Z0-9_-]+$/);
 const uploadSchema = z.object({
@@ -40,7 +41,8 @@ export async function uploadVisionPage(request: Request): Promise<Response> {
   if (dimensions.width !== input.width || dimensions.height !== input.height) throw new ApiError(400, 'Image dimensions do not match the rendered page.');
   if (!await consumeRateLimit(context.db, `vision-upload:${context.state.id}`, 120, 60)) throw new ApiError(429, 'Too many page uploads. Resume in one minute.');
   const imageSha256 = await sha256Hex(raster);
-  await bucket().put(visionBlobKey(context.state.id, document, input.page, imageSha256), raster, { httpMetadata: { contentType: 'image/jpeg' } });
+  const stored = await storeVisionPage(context.db, bucket(), context.state.id, document.id, visionBlobKey(context.state.id, document, input.page, imageSha256), raster);
+  if (!stored) throw new ApiError(409, 'This document was deleted while its page was being prepared. Reload the workspace.');
   return json({ page: input.page, documentId: document.id, documentVersion: document.version, imageSha256 });
 }
 

@@ -6,6 +6,17 @@ export type TranslationParams = Record<string, unknown>;
 
 /** Presentation text only. Source evidence and reviewer-authored values never pass through this dictionary. */
 export const EN_TRANSLATIONS: Readonly<Record<string, string>> = {
+  "Chứng từ được thêm vào hồ sơ đã chọn; cần đối chiếu nội dung để xác nhận cùng lô hàng.": "Documents were added to the selected case; compare their contents to confirm they belong to the same shipment.",
+  "Các bản gốc này đã được lưu và không được thêm lại: {p0}": "These originals are already saved and were not added again: {p0}",
+  "Đã xóa hồ sơ": "Case deleted",
+  "Đã thêm chứng từ vào hồ sơ đã chọn": "Documents added to the selected case",
+  "Người dùng chọn hồ sơ nhận chứng từ. Giữ nguyên hồ sơ đích khi AI đọc hoặc đối chiếu lại.": "The user chose the receiving case. Keep that case when AI reads or compares the documents again.",
+  "Chỉ chủ không gian làm việc mới có thể xóa hồ sơ.": "Only the workspace owner can delete a case.",
+  "Không tìm thấy hồ sơ. Nạp lại danh sách lô hàng.": "Case not found. Reload the shipment list.",
+  "Xác nhận xóa hồ sơ lần nữa trước khi tiếp tục.": "Confirm case deletion again before continuing.",
+  "Xử lý lần chuyển ECUS và chờ trợ lý Windows xác nhận khôi phục trước khi xóa hồ sơ này.": "Resolve the ECUS transfer and wait for the Windows helper to acknowledge recovery before deleting this case.",
+  "Chứng từ đã bị xóa trong lúc chuẩn bị ảnh trang. Nạp lại không gian làm việc.": "This document was deleted while its page was being prepared. Reload the workspace.",
+  "Chủ không gian làm việc đã xác nhận xóa hồ sơ hai lần.": "Case deletion confirmed twice by the workspace owner.",
   "AI đọc trực tiếp ảnh trang chứng từ và điền bản nháp.": "AI reads the document page images directly and fills the draft.",
   "Cần Kimi đọc bản gốc": "Original awaiting Kimi reading",
   "Cần AI đọc bản gốc": "Original awaiting AI reading",
@@ -1534,6 +1545,8 @@ export function translateIssue(issue: Issue, locale: Locale): Issue {
   return { ...issue, title, description: translateSystemText(issue.description, locale) };
 }
 const AUDIT_VI: Readonly<Record<string, string>> = {
+  "case_deleted": "Đã xóa hồ sơ",
+  "documents_added_to_case": "Đã thêm chứng từ vào hồ sơ đã chọn",
   "demo_records_removed": "Đã xóa dữ liệu mẫu",
   "goods_saved": "Đã lưu thay đổi hàng hóa",
   "regroup_existing": "Đã đánh giá nhóm lô hàng",

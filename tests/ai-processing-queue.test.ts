@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import test from 'node:test';
-import { AUTOMATIC_LEASE_MS, automaticDocuments, automaticPageNeedsKimi, claimAiJob, finishAiJob } from '../lib/ai-processing-queue.ts';
+import { AUTOMATIC_LEASE_MS, CLAIM_JOB_SQL, automaticDocuments, automaticPageNeedsKimi, claimAiJob, enqueuePage, finishAiJob } from '../lib/ai-processing-queue.ts';
 import { saveAiResult } from '../lib/ai-result-persistence.ts';
 import { applyAction, createEmptyWorkspace } from '../lib/engine.ts';
 import { prepareWorkspaceCommit, readWorkspaceState } from '../lib/server-persistence.ts';
@@ -19,7 +19,7 @@ class Statement {
 }
 function fixture() {
   const sqlite = new DatabaseSync(':memory:');
-  for (const name of ['0000_charming_ghost_rider', '0002_workspace_state_chunks', '0003_ai_processing_jobs']) sqlite.exec(readFileSync(new URL(`../drizzle/${name}.sql`, import.meta.url), 'utf8'));
+  for (const name of ['0000_charming_ghost_rider', '0002_workspace_state_chunks', '0003_ai_processing_jobs', '0006_case_file_cleanup']) sqlite.exec(readFileSync(new URL(`../drizzle/${name}.sql`, import.meta.url), 'utf8'));
   const state = createEmptyWorkspace('ws_jobs');
   sqlite.prepare('INSERT INTO workspaces VALUES (?, ?, ?, ?, ?, ?)').run(state.id, actor.id, 0, JSON.stringify(state), 'now', 'now');
   sqlite.prepare('INSERT INTO workspace_members VALUES (?, ?, ?, ?, ?, ?)').run(state.id, actor.email, actor.id, 'owner', actor.id, 'now');
@@ -67,6 +67,50 @@ test('rate limits wait; provider failures require deliberate retry; crashed leas
     assert.ok(manual);
     assert.ok(await claimAiJob(db, state.id, source, 1, false, 64000 + AUTOMATIC_LEASE_MS));
     assert.equal((await finishAiJob(db, state.id, source, 1, manual!, 'completed')).meta.changes, 0, 'expired reader cannot finish a replacement lease');
+  } finally { sqlite.close(); }
+});
+
+test('deleted documents cannot be re-enqueued or retried by stale requests', async () => {
+  const { db, sqlite, state } = fixture();
+  try {
+    const source = document('deleted');
+    const lease = await claimAiJob(db, state.id, source, 1, false, 1000);
+    assert.ok(lease);
+    sqlite.exec('BEGIN IMMEDIATE');
+    sqlite.prepare('INSERT INTO deleted_case_documents (workspace_id, document_id) VALUES (?, ?)').run(state.id, source.id);
+    sqlite.prepare('DELETE FROM ai_processing_jobs WHERE workspace_id = ? AND document_id = ?').run(state.id, source.id);
+    sqlite.exec('COMMIT');
+
+    await enqueuePage(db, state.id, source, 1);
+    await enqueuePage(db, state.id, source, 2);
+    assert.equal(await claimAiJob(db, state.id, source, 1, false, 2000), null);
+    assert.equal(await claimAiJob(db, state.id, source, 1, true, 2000), null);
+    assert.equal(await claimAiJob(db, state.id, { ...source, version: 2 }, 1, true, 2000), null);
+    assert.equal((await finishAiJob(db, state.id, source, 1, lease!, 'completed', undefined, 2000)).meta.changes, 0);
+    assert.equal(sqlite.prepare('SELECT COUNT(*) AS count FROM ai_processing_jobs WHERE document_id = ?').get(source.id)?.count, 0);
+    assert.ok(await claimAiJob(db, state.id, document('remaining'), 1, false, 2000));
+
+    const otherWorkspaceId = 'ws_other';
+    sqlite.prepare('INSERT INTO workspaces VALUES (?, ?, ?, ?, ?, ?)').run(otherWorkspaceId, 'other-owner', 0, JSON.stringify({ ...state, id: otherWorkspaceId }), 'now', 'now');
+    assert.ok(await claimAiJob(db, otherWorkspaceId, source, 1, false, 2000), 'a deletion in one workspace never blocks another workspace');
+  } finally { sqlite.close(); }
+});
+
+test('a tombstone arriving between enqueue and claim prevents a stale queued row from running', async () => {
+  const { db, sqlite, state } = fixture();
+  try {
+    const source = document('delete-during-claim');
+    let deleted = false;
+    const racing = { prepare(sql: string) {
+      if (sql === CLAIM_JOB_SQL && !deleted) {
+        deleted = true;
+        sqlite.prepare('INSERT INTO deleted_case_documents (workspace_id, document_id) VALUES (?, ?)').run(state.id, source.id);
+      }
+      return db.prepare(sql);
+    } } as D1Database;
+    assert.equal(await claimAiJob(racing, state.id, source, 1, true, 1000), null);
+    const job = sqlite.prepare('SELECT state, attempts FROM ai_processing_jobs WHERE document_id = ?').get(source.id);
+    assert.deepEqual({ ...job }, { state: 'queued', attempts: 0 });
   } finally { sqlite.close(); }
 });
 

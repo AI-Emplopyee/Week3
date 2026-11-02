@@ -42,6 +42,7 @@ import {
   Settings2,
   ShieldCheck,
   Ship,
+  Trash2,
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
@@ -72,6 +73,8 @@ import { SourceGoods } from "@/components/workspace/source-goods";
 import { WorkspaceSettings } from "@/components/workspace/workspace-settings";
 import { EcusExportSubmit } from "@/components/workspace/ecus-export-submit";
 import { SampleReview } from "@/components/workspace/sample-review";
+import { UploadDocumentsDialog } from "@/components/workspace/upload-documents-dialog";
+import { DeleteCaseDialog } from "@/components/workspace/delete-case-dialog";
 import {
   WorkspaceShell,
   type WorkspaceView,
@@ -178,12 +181,18 @@ function Workspace() {
   const [extractionCancelable, setExtractionCancelable] = useState(false);
   const uploadAbort = useRef<AbortController | null>(null);
   const automaticCases = useRef(new Set<string>());
-  const uploadInput = useRef<HTMLInputElement>(null);
+  const [uploadRequest, setUploadRequest] = useState<{ target?: Pick<ShipmentCase, "id" | "title" | "reference"> } | null>(null);
+  const [deleteCaseId, setDeleteCaseId] = useState<string | null>(null);
   const replaceInput = useRef<HTMLInputElement>(null);
   const replaceId = useRef("");
 
-  const upload = async (files: FileList | null, replacement = false) => {
-    if (!files?.length || conflictRef.current) return;
+  const requestUpload = (target?: ShipmentCase) => {
+    if (busy || conflictRef.current) return;
+    setError("");
+    setUploadRequest({ target: target ? { id: target.id, title: target.title, reference: target.reference } : undefined });
+  };
+  const upload = async (files: FileList | File[] | null, replacement = false, targetCaseId?: string): Promise<boolean> => {
+    if (!files?.length || conflictRef.current) return false;
     setBusy(true);
     setError("");
     const controller = new AbortController();
@@ -193,6 +202,8 @@ function Workspace() {
     let committed = false;
     const existingDocuments = new Set((stateRef.current?.state.documents || []).map(document => `${document.id}:${document.version}`));
     try {
+      if (batch.length > 20)
+        throw new Error(locale === "en" ? "Choose up to 20 files per upload." : "Chọn tối đa 20 tệp mỗi lần tải lên.");
       if (
         batch.reduce((total, file) => total + file.size, 0) >
         22 * 1024 * 1024
@@ -238,6 +249,7 @@ function Workspace() {
       form.set("documents", JSON.stringify(metadata));
       form.set("revision", String(stateRef.current?.state.revision ?? 0));
       if (replacement) form.set("documentId", replaceId.current);
+      else if (targetCaseId) form.set("targetCaseId", targetCaseId);
       const response = await fetchWithSession("/api/documents", {
         method: "POST",
         body: form,
@@ -343,9 +355,9 @@ function Workspace() {
       setUploadLabel("");
       setExtractionCancelable(false);
       uploadAbort.current = null;
-      if (uploadInput.current) uploadInput.current.value = "";
       if (replaceInput.current) replaceInput.current.value = "";
     }
+    return committed;
   };
   const navigate = (next: WorkspaceView) => {
     setView(next);
@@ -484,6 +496,7 @@ function Workspace() {
 
   const state = data?.state;
   const current = state?.cases.find((c) => c.id === selectedId);
+  const deletionTarget = state?.cases.find((c) => c.id === deleteCaseId);
   const currentScope = current ? caseScopeMessage(current.caseType) : null;
   const unresolved = data?.issues.filter((i) => !i.resolved) || [];
   const issuePriority: Record<string, number> = {
@@ -562,7 +575,7 @@ function Workspace() {
   // Background writes install only when no local edit is pending, and only if the
   // exact state seen at request start is still current when the response arrives.
   useEffect(() => {
-    if (!localMode || busy || hasAnyPendingDrafts || conflictRef.current) return;
+    if (!localMode || busy || deleteCaseId || hasAnyPendingDrafts || conflictRef.current) return;
     const controller = new AbortController();
     const timer = window.setInterval(() => {
       const initial = stateRef.current;
@@ -574,7 +587,7 @@ function Workspace() {
       }).catch(() => undefined);
     }, 4000);
     return () => { controller.abort(); window.clearInterval(timer); };
-  }, [localMode, busy, hasAnyPendingDrafts, conflictRef, install, stateRef]);
+  }, [localMode, busy, deleteCaseId, hasAnyPendingDrafts, conflictRef, install, stateRef]);
   const liveCases =
     state?.cases.filter((c) => !c.mergedInto && c.status !== "completed") || [];
   const automaticDraft = state?.emailDrafts?.find(draft => draft.caseId === current?.id && draft.automation && draft.automation.state !== 'resolved');
@@ -582,7 +595,7 @@ function Workspace() {
   const automationKey = current?.status === 'review' && current.caseType === 'import'
     ? `${current.id}:${documents.map(document => `${document.id}:${document.version}`).sort().join('|')}` : '';
   useEffect(() => {
-    if (!automationKey || busy || hasAnyPendingDrafts || conflictRef.current || automaticCases.current.has(automationKey)) return;
+    if (!automationKey || busy || deleteCaseId || uploadRequest || hasAnyPendingDrafts || conflictRef.current || automaticCases.current.has(automationKey)) return;
     const initial = stateRef.current;
     if (!initial || !selectedId) return;
     automaticCases.current.add(automationKey);
@@ -621,7 +634,7 @@ function Workspace() {
         setBusy(false);
       }
     })();
-  }, [automationKey, busy, hasAnyPendingDrafts, selectedId, locale, conflictRef, install, mutation, setBusy, setError, stateRef]);
+  }, [automationKey, busy, deleteCaseId, uploadRequest, hasAnyPendingDrafts, selectedId, locale, conflictRef, install, mutation, setBusy, setError, stateRef]);
 
   const documentPanel =
     state && current ? (
@@ -638,7 +651,7 @@ function Workspace() {
         hasPendingDrafts={hasPendingDrafts}
         reviewReason={reviewReason}
         mutation={mutation}
-        onUpload={() => uploadInput.current?.click()}
+        onUpload={() => requestUpload(current)}
         onGroup={() => showModal("group")}
         onReplace={(id) => {
           replaceId.current = id;
@@ -698,7 +711,7 @@ function Workspace() {
         onGoods={() => setTab("goods")}
         onResolve={(issue) => showModal("resolve", issue)}
         onEditCase={() => showModal("edit_case")}
-        onUpload={() => uploadInput.current?.click()}
+        onUpload={() => requestUpload(current)}
         showReviewReason={tab === "declaration"}
         hasPendingEmailDraft={hasPendingEmailDraft}
         onReasonChange={setReviewReason}
@@ -725,13 +738,6 @@ function Workspace() {
       onNavigate={navigate}
       onActivity={() => setShowActivity(true)}
     >
-      <input
-        ref={uploadInput}
-        type="file"
-        multiple
-        hidden
-        onChange={(e) => void upload(e.target.files)}
-      />
       <input
         ref={replaceInput}
         type="file"
@@ -839,6 +845,13 @@ function Workspace() {
                 </div>
               </div>
               <div className="case-actions">
+                {data?.role === "owner" && <button
+                  className="button secondary delete-case-trigger"
+                  disabled={busy || !!conflict || hasPendingDrafts}
+                  onClick={() => { setError(""); setDeleteCaseId(current.id); }}
+                >
+                  <Trash2 size={15} />{locale === "en" ? "Delete case" : "Xóa hồ sơ"}
+                </button>}
                 {editable && (
                   <button
                     className="button secondary"
@@ -1051,7 +1064,7 @@ function Workspace() {
                   return next;
                 })
               }
-              onUpload={() => uploadInput.current?.click()}
+              onUpload={() => requestUpload(current)}
               onDocument={(id) => {
                 setDocId(id);
                 setPage(1);
@@ -1323,7 +1336,7 @@ function Workspace() {
         <WorkspaceSettings data={data!} busy={busy} mutation={mutation} />
       ) : (
         <>
-        <EmailShipmentMatches state={state} disabled={busy || !!conflict} onBusyChange={setBusy} onApplied={(response, message) => { install(response); setError(""); setToast(message); }} onConflict={response => { conflictRef.current = true; setConflict(response); }} mutation={mutation} onOpen={openCase} onUpload={() => uploadInput.current?.click()} />
+        <EmailShipmentMatches state={state} disabled={busy || !!conflict} onBusyChange={setBusy} onApplied={(response, message) => { install(response); setError(""); setToast(message); }} onConflict={response => { conflictRef.current = true; setConflict(response); }} mutation={mutation} onOpen={openCase} onUpload={() => requestUpload()} />
         <ShipmentList
           query={shipmentQuery}
           filter={shipmentFilter}
@@ -1334,7 +1347,7 @@ function Workspace() {
           busy={busy}
           onOpen={openCase}
           onCreate={() => showModal("create")}
-          onUpload={() => uploadInput.current?.click()}
+          onUpload={() => requestUpload()}
           onDemo={() =>
             void mutation(
               { type: "seed_demo" },
@@ -1408,6 +1421,35 @@ function Workspace() {
           </div>
         </ModalShell>
       )}
+      {uploadRequest && <UploadDocumentsDialog
+        target={uploadRequest.target}
+        busy={busy}
+        error={error}
+        progress={uploadLabel}
+        canStop={extractionCancelable}
+        onStop={() => uploadAbort.current?.abort()}
+        onUpload={(files, targetCaseId) => upload(files, false, targetCaseId)}
+        onClose={() => setUploadRequest(null)}
+      />}
+      {deletionTarget && <DeleteCaseDialog
+        key={deletionTarget.id}
+        shipment={deletionTarget}
+        documentCount={state?.documents.filter(document => document.caseId === deletionTarget.id).length || 0}
+        busy={busy}
+        error={error}
+        onClose={() => setDeleteCaseId(null)}
+        onDelete={async () => {
+          const ok = await mutation({ type: "delete_case", caseId: deletionTarget.id, confirmed: true }, locale === "en" ? "Case deleted" : "Đã xóa hồ sơ");
+          if (ok) {
+            setSelectedId(null);
+            setSelectedDocs([]);
+            setDocId("");
+            setSecondary(null);
+            setView("shipments");
+          }
+          return ok;
+        }}
+      />}
       {modal && data && (
         <ShipmentActionDialog
           request={modal}

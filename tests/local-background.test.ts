@@ -85,7 +85,7 @@ test('local PDF preparation verifies original bytes and creates a bounded JPEG w
 
 test('local HTTP runner reads two originals concurrently, saves both revisions and resumes without duplicate calls', async () => {
   const sqlite = new DatabaseSync(':memory:');
-  for (const name of ['0000_charming_ghost_rider','0001_classy_wrecking_crew','0002_workspace_state_chunks','0003_ai_processing_jobs']) sqlite.exec(readFileSync(new URL(`../drizzle/${name}.sql`,import.meta.url),'utf8'));
+  for (const name of ['0000_charming_ghost_rider','0001_classy_wrecking_crew','0002_workspace_state_chunks','0003_ai_processing_jobs','0006_case_file_cleanup']) sqlite.exec(readFileSync(new URL(`../drizzle/${name}.sql`,import.meta.url),'utf8'));
   const actor: Actor = {id:'owner',email:'owner@example.invalid',name:'Synthetic owner'};
   const initial = createEmptyWorkspace('ws_background');
   sqlite.prepare('INSERT INTO workspaces VALUES (?,?,?,?,?,?)').run(initial.id,actor.id,0,JSON.stringify(initial),'now','now');
