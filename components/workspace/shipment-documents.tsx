@@ -83,6 +83,7 @@ export function ShipmentDocuments({
   const hasOriginal = !!source && (!source.synthetic || !!source.blobKey);
   const sourcePage =
     source?.pages.find((p) => p.page === page) || source?.pages[0];
+  const hasWordText = source?.mime === 'application/msword' && source.pages.some(section => section.textSource === 'office');
   const legacySource =
     !!source && source.extractionPipeline !== "kimi" && !source.referenceOnly;
   const sourceFormatUnsupported = source?.extractionStatus === "unsupported";
@@ -262,6 +263,14 @@ export function ShipmentDocuments({
                 ? locale === "vi"
                   ? "Đang chờ AI đọc bản gốc."
                   : "Waiting for AI to read the original."
+                : hasWordText
+                  ? source.aiStatus === 'completed'
+                    ? (locale === 'vi' ? 'AI đã xử lý toàn bộ phần văn bản Word.' : 'AI has processed all Word text sections.')
+                    : source.aiStatus === 'partial'
+                      ? (locale === 'vi'
+                        ? `AI đã xử lý ${source.aiProcessedPages?.length || 0}/${source.pages.length} phần văn bản. Có thể tiếp tục các phần còn lại.`
+                        : `AI processed ${source.aiProcessedPages?.length || 0}/${source.pages.length} text sections. You can resume the remaining sections.`)
+                      : (locale === 'vi' ? 'AI chưa hoàn tất. Bản gốc và các phần văn bản đã xử lý vẫn được lưu.' : 'AI has not finished. The original and processed text sections are saved.')
                 : source.aiStatus === "completed"
                   ? t("AI đã xử lý toàn bộ trang chứng từ.")
                   : source.aiStatus === "partial"
@@ -367,7 +376,9 @@ export function ShipmentDocuments({
             </p>
           )}
           <div className="source-preview-toolbar">
-            <span>{t("Bản gốc")}</span>
+            <span>{hasWordText
+              ? (locale === 'vi' ? 'Văn bản Word' : 'Word text')
+              : t("Bản gốc")}</span>
             {hasOriginal && <a
               href={`/api/documents/${source.id}?download=1`}
               className="text-button"

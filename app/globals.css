@@ -1557,6 +1557,24 @@ h3 {
   gap: 6px;
   align-items: center;
 }
+.original-preview > .word-preview-note {
+  margin: 0 0 12px;
+  padding: 0 8px;
+  text-align: left;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.word-text-preview {
+  margin: 0;
+  padding: 20px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  tab-size: 4;
+  font: 13px/1.7 ui-monospace, monospace;
+  color: #243321;
+  background: #fff;
+  box-shadow: 0 1px 5px #26351d1a;
+}
 .data-panel {
   min-width: 0;
   align-self: stretch;

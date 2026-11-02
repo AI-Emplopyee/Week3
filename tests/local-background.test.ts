@@ -83,6 +83,38 @@ test('local PDF preparation verifies original bytes and creates a bounded JPEG w
   await assert.rejects(() => renderOriginalPage(bytes,{...source,sha256:'0'.repeat(64)},1), /integrity/);
 });
 
+test('local runner submits Word text sections without downloading or rasterizing the original', async () => {
+  const paths: string[] = [];
+  let submitted: Record<string, unknown> | undefined;
+  let finish!: () => void;
+  const completed = new Promise<void>(resolve => { finish = resolve; });
+  const errors: string[] = [];
+  const reader = startLocalBackground('http://127.0.0.1:5173', {
+    intervalMs: 1,
+    log: (message: string) => errors.push(message),
+    request: async (input: string | URL | Request, init?: RequestInit) => {
+      const path = new URL(String(input)).pathname;
+      paths.push(path);
+      if (path === '/api/ai/queue') return Response.json({ configured: true, revision: 7, jobs: [{
+        document: { id: 'word-document', caseId: 'case-word', version: 1, sha256: 'a'.repeat(64), mime: 'application/msword', pages: [{ page: 1, text: 'Invoice TEST-DOC-2026', textSource: 'office' }] }, page: 1,
+      }] });
+      if (path === '/api/ai/extract') {
+        submitted = JSON.parse(String(init?.body));
+        finish();
+        return Response.json({ ok: true });
+      }
+      throw new Error(`Word text must not request ${path}`);
+    },
+  });
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([completed, new Promise<never>((_, reject) => { timeout = setTimeout(() => reject(new Error('Word processing did not start')), 2000); })]);
+    assert.deepEqual(paths, ['/api/ai/queue', '/api/ai/extract']);
+    assert.deepEqual(submitted, { revision: 7, caseId: 'case-word', documentId: 'word-document', documentVersion: 1, sha256: 'a'.repeat(64), pages: [1], consent: true, automatic: true });
+    assert.deepEqual(errors, []);
+  } finally { reader.stop(); clearTimeout(timeout); }
+});
+
 test('local HTTP runner reads two originals concurrently, saves both revisions and resumes without duplicate calls', async () => {
   const sqlite = new DatabaseSync(':memory:');
   for (const name of ['0000_charming_ghost_rider','0001_classy_wrecking_crew','0002_workspace_state_chunks','0003_ai_processing_jobs','0006_case_file_cleanup']) sqlite.exec(readFileSync(new URL(`../drizzle/${name}.sql`,import.meta.url),'utf8'));

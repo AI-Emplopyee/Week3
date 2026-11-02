@@ -7,6 +7,7 @@ import { matchEmailsInContext } from '@/lib/server-email-grouping';
 import { isVisualDocument } from '@/lib/vision';
 import { kimiStatus } from '@/lib/kimi';
 import { enrichIntakeWithKimi } from '@/lib/intake-ai';
+import { extractWordDocument, WordDocumentError } from '@/lib/word-document';
 import { parseIntakeMetadata, sourceCollectionSchema, type IntakeMetadata } from '@/lib/intake-metadata';
 import { ApiError, bucket, expectRevision, json, mutate, readLimitedBytes, requireSameOrigin, response, workspace } from '@/lib/server';
 import { acceptedFile, MAX_UPLOAD_BYTES, parseId, parseUploadedPages, parseRevision, safeFilename } from '@/lib/server-validation';
@@ -46,8 +47,8 @@ function validateFile(name: string, bytes: Uint8Array) {
   catch (error) { throw new ApiError(400, error instanceof Error ? error.message : 'Unsupported file.'); }
 }
 async function readPages(bytes: Uint8Array, extension: string, metadata?: IntakeMetadata): Promise<SourcePage[]> {
-  // Binary documents never accept browser/OCR text as extraction evidence.
-  // Counting pages is structural validation only; Kimi reads their page images.
+  // PDF/image documents never accept browser/OCR text as extraction evidence.
+  // Counting PDF pages is structural validation only; Kimi reads their page images.
   if (['txt', 'csv'].includes(extension)) return textPages(new TextDecoder().decode(bytes));
   if (extension === 'xml') return textPages(new TextDecoder().decode(bytes)).map(page => ({ ...page, textSource: 'xml' }));
   if (extension === 'pdf') {
@@ -58,9 +59,27 @@ async function readPages(bytes: Uint8Array, extension: string, metadata?: Intake
   return [];
 }
 function pendingExtraction(extension: string, pages: SourcePage[]): Pick<UploadedDocument, 'extractionStatus' | 'extractionError'> {
-  if (!['pdf', 'png', 'jpg', 'jpeg', 'webp', 'txt', 'csv', 'xml'].includes(extension)) return { extractionStatus: 'unsupported', extractionError: 'Original preserved. Convert this format to PDF or a supported image for AI extraction.' };
+  if (!['pdf', 'doc', 'png', 'jpg', 'jpeg', 'webp', 'txt', 'csv', 'xml'].includes(extension)) return { extractionStatus: 'unsupported', extractionError: 'Original preserved. Convert this format to PDF or a supported image for AI extraction.' };
   if (!pages.length) return { extractionStatus: 'failed', extractionError: 'The original pages could not be opened. Provide an unlocked, readable PDF or supported image.' };
   return { extractionStatus: 'pending_ai' };
+}
+async function prepareSource(bytes: Uint8Array, extension: string, metadata?: IntakeMetadata): Promise<Pick<UploadedDocument, 'pages' | 'extractionStatus' | 'extractionError'>> {
+  if (extension === 'doc') {
+    // Word text is derived only from the saved original, never browser metadata.
+    // A conversion failure preserves the original and the rest of a mixed batch.
+    try {
+      const { pages } = await extractWordDocument(bytes);
+      return { pages, extractionStatus: 'pending_ai' };
+    } catch (error) {
+      return {
+        pages: [],
+        extractionStatus: error instanceof WordDocumentError && error.code === 'unsupported' ? 'unsupported' : 'failed',
+        extractionError: error instanceof WordDocumentError ? error.message : 'This Word document could not be read automatically. Open the original in Word or LibreOffice, save it as PDF, and upload the PDF.',
+      };
+    }
+  }
+  const pages = await readPages(bytes, extension, metadata);
+  return { pages, ...pendingExtraction(extension, pages) };
 }
 
 /** Originals and extracted pages are staged together; grouping/autofill commit once per batch. */
@@ -130,10 +149,9 @@ export async function upload(request: Request): Promise<Response> {
           }
           continue;
         }
-        const pages = await readPages(bytes, extension, metadata[index]);
-        const assessment = pendingExtraction(extension, pages);
+        const prepared = await prepareSource(bytes, extension, metadata[index]);
         const id = `doc_${crypto.randomUUID()}`;
-        documents.push({ extractionPipeline: 'kimi', id, name, mime, size: bytes.length, sha256, pages, ...assessment, sourcePaths: metadata[index].sourcePaths, referenceOnly: metadata[index].referenceOnly, blobKey: await writeOriginal(id, bytes, mime) });
+        documents.push({ extractionPipeline: 'kimi', id, name, mime, size: bytes.length, sha256, ...prepared, sourcePaths: metadata[index].sourcePaths, referenceOnly: metadata[index].referenceOnly, blobKey: await writeOriginal(id, bytes, mime) });
         continue;
       }
       if (documentId) throw new ApiError(400, 'Import an email as a new intake. Replace an individual attachment from its source document.');
@@ -157,17 +175,15 @@ export async function upload(request: Request): Promise<Response> {
         if (duplicate) { email.documentIds.push(duplicate.id); continue; }
         const id = `doc_${crypto.randomUUID()}`;
         let attachmentMime = attachment.mimeType || 'application/octet-stream';
-        let pages: SourcePage[] = [];
-        let assessment: Pick<UploadedDocument, 'extractionStatus' | 'extractionError'>;
+        let prepared: Pick<UploadedDocument, 'pages' | 'extractionStatus' | 'extractionError'>;
         let accepted: ReturnType<typeof acceptedFile> | undefined;
         try { accepted = acceptedFile(attachmentName, data); } catch { /* Keep unsupported originals with an explicit blocker. */ }
         if (accepted) {
           attachmentMime = accepted.mime;
-          const prepared = metadata[index].attachments?.find(item => item.index === attachmentIndex);
-          pages = await readPages(data, accepted.extension, prepared);
-          assessment = pendingExtraction(accepted.extension, pages);
-        } else assessment = { extractionStatus: 'unsupported', extractionError: 'Attachment preserved, but this format cannot be extracted. Replace it with a supported document.' };
-        documents.push({ extractionPipeline: 'kimi', id, name: attachmentName, mime: attachmentMime, size: data.length, sha256: attachmentHash, blobKey: await writeOriginal(id, data, attachmentMime), pages, ...assessment, sourceEmailId: emailId });
+          const attachmentMetadata = metadata[index].attachments?.find(item => item.index === attachmentIndex);
+          prepared = await prepareSource(data, accepted.extension, attachmentMetadata);
+        } else prepared = { pages: [], extractionStatus: 'unsupported', extractionError: 'Attachment preserved, but this format cannot be extracted. Replace it with a supported document.' };
+        documents.push({ extractionPipeline: 'kimi', id, name: attachmentName, mime: attachmentMime, size: data.length, sha256: attachmentHash, blobKey: await writeOriginal(id, data, attachmentMime), ...prepared, sourceEmailId: emailId });
         email.documentIds.push(id);
       }
       emails.push(email);

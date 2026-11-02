@@ -19,10 +19,10 @@ export async function prepareFile(file: File, options: IntakeOptions = {}): Prom
     if (pages.length > MAX_PAGES) throw new Error('Tài liệu vượt quá 50 trang. Hãy tách thành tệp nhỏ hơn.');
     return { pages, extractionStatus: 'pending_ai' };
   }
-  // The server independently counts physical PDF pages; their text stays empty.
-  if (extension === 'pdf' || extension === 'eml') return { pages: [], extractionStatus: 'pending_ai' };
+  // The server validates originals and prepares PDF pages or Word text independently.
+  if (['pdf', 'doc', 'eml'].includes(extension || '')) return { pages: [], extractionStatus: 'pending_ai' };
   if (['png', 'jpg', 'jpeg', 'webp'].includes(extension || '')) return { pages: [{ page: 1, text: '' }], extractionStatus: 'pending_ai' };
-  throw new Error('Chưa hỗ trợ định dạng này. Chọn PDF, TXT, CSV, EML, PNG hoặc JPG.');
+  throw new Error('Chưa hỗ trợ định dạng này. Chọn PDF, DOC, TXT, CSV, EML, PNG hoặc JPG.');
 }
 
 export type PreparedIntakeFile = PreparedFile & {

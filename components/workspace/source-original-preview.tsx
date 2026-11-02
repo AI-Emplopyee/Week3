@@ -25,6 +25,9 @@ export function SourceOriginalPreview({ source, page, onPageChange }: {
   const pdf = opened?.identity === identity ? opened.pdf : undefined;
   const pageCount = pdf?.pageCount ?? Math.max(1, source.pages.length);
   const selectedPage = Math.min(pageCount, Math.max(1, page));
+  const wordSection = source.mime === 'application/msword'
+    ? source.pages.find(section => section.page === selectedPage && section.textSource === 'office')
+    : undefined;
   const failed = failure?.identity === identity && (failure.page === undefined || failure.page === selectedPage);
   const visible = completed?.identity === identity && completed.page === selectedPage;
   const say = (vi: string, en: string) => locale === "vi" ? vi : en;
@@ -77,6 +80,18 @@ export function SourceOriginalPreview({ source, page, onPageChange }: {
             <button className="button secondary small" onClick={() => setRetry(value => value + 1)}>{say('Thử lại', 'Retry preview')}</button> {download}
           </div>}
           <canvas ref={canvas} className="original-page-canvas" role="img" aria-label={say(`Bản gốc ${source.name}, trang ${selectedPage}`, `Original ${source.name}, page ${selectedPage}`)} hidden={!visible || failed} />
+        </>
+      ) : wordSection ? (
+        <>
+          <div className="original-page-controls">
+            <button className="icon-button" aria-label={say('Phần trước', 'Previous section')} disabled={selectedPage <= 1} onClick={() => onPageChange(selectedPage - 1)}><ChevronLeft size={17} /></button>
+            <label>{say('Phần văn bản', 'Text section')} <select aria-label={say('Chọn phần văn bản Word', 'Choose Word text section')} value={selectedPage} onChange={event => onPageChange(Number(event.target.value))}>
+              {source.pages.map(section => <option key={section.page} value={section.page}>{section.page}</option>)}
+            </select> / {pageCount}</label>
+            <button className="icon-button" aria-label={say('Phần sau', 'Next section')} disabled={selectedPage >= pageCount} onClick={() => onPageChange(selectedPage + 1)}><ChevronRight size={17} /></button>
+          </div>
+          <p className="word-preview-note">{say('Văn bản trích xuất từ Word; các phần không tương ứng với trang in. Hình ảnh, đối tượng nhúng, nhận xét và bố cục gốc không được đọc. Hãy xuất thành PDF rồi tải lên nếu cần các nội dung này.', 'Extracted Word text; sections do not correspond to printed pages. Images, embedded objects, comments and original layout are not read. Export to PDF and upload it if these are needed.')}</p>
+          <pre className="word-text-preview" aria-label={say(`Văn bản Word, phần ${selectedPage}`, `Word text, section ${selectedPage}`)}>{wordSection.text}</pre>
         </>
       ) : source.mime.startsWith('image/') ? (
         failedImage === identity ? <p role="alert">{say('Không tải được ảnh gốc.', 'The original image could not be loaded.')} {download}</p> :

@@ -33,6 +33,7 @@
     "react": "19.2.6",
     "react-dom": "19.2.6",
     "sharp": "0.35.4",
+    "word-extractor": "1.0.4",
     "zod": "^3.25.76"
   },
   "devDependencies": {

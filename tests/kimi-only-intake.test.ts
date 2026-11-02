@@ -24,9 +24,10 @@ test('historical OCR and native PDF text cannot invoke a runtime shipment parser
   }
 });
 
-test('PDFs and image uploads have no locally extracted facts and wait for Kimi', async () => {
+test('PDF, Word and image uploads have no browser-extracted facts and wait for Kimi', async () => {
   const pdf = new File(['%PDF-1.7\nhidden text should not become a candidate'], 'invoice.pdf', { type: 'application/pdf' });
   assert.deepEqual(await prepareFile(pdf), { pages: [], extractionStatus: 'pending_ai' });
+  assert.deepEqual(await prepareFile(new File(['Word original bytes'], 'invoice.DOC', { type: 'application/msword' })), { pages: [], extractionStatus: 'pending_ai' });
   assert.deepEqual(await prepareFile(new File(['pixels'], 'scan.png', { type: 'image/png' })), { pages: [{ page: 1, text: '' }], extractionStatus: 'pending_ai' });
   const text = await prepareFile(new File(['Invoice Number: VALUE-1'], 'invoice.txt'));
   assert.equal(text.pages[0].text, 'Invoice Number: VALUE-1');
@@ -35,17 +36,21 @@ test('PDFs and image uploads have no locally extracted facts and wait for Kimi',
   await assert.rejects(prepareFile(pdf, { signal: abort.signal }), error => error instanceof DOMException && error.name === 'AbortError');
 });
 
-test('email attachments wait for Kimi without interpreting their embedded PDF text', async () => {
+test('PDF and Word email attachments wait for server preparation without browser text extraction', async () => {
   const eml = [
     'From: test@example.invalid', 'Subject: Test', 'MIME-Version: 1.0',
     'Content-Type: multipart/mixed; boundary="test-boundary"', '', '--test-boundary',
     'Content-Type: application/pdf; name="invoice.pdf"', 'Content-Disposition: attachment; filename="invoice.pdf"',
-    'Content-Transfer-Encoding: base64', '', Buffer.from('%PDF-1.7\nInvoice: UNSUPPORTED-LOCAL-FACT').toString('base64'), '--test-boundary--', '',
+    'Content-Transfer-Encoding: base64', '', Buffer.from('%PDF-1.7\nInvoice: UNSUPPORTED-LOCAL-FACT').toString('base64'), '--test-boundary',
+    'Content-Type: application/msword; name="invoice.doc"', 'Content-Disposition: attachment; filename="invoice.doc"',
+    'Content-Transfer-Encoding: base64', '', Buffer.from('Word original bytes').toString('base64'), '--test-boundary--', '',
   ].join('\r\n');
   const result = await prepareIntakeFile(new File([eml], 'message.eml', { type: 'message/rfc822' }));
-  assert.equal(result.attachments?.length, 1);
-  assert.equal(result.attachments?.[0].extractionStatus, 'pending_ai');
-  assert.deepEqual(result.attachments?.[0].pages, []);
+  assert.equal(result.attachments?.length, 2);
+  for (const attachment of result.attachments!) {
+    assert.equal(attachment.extractionStatus, 'pending_ai');
+    assert.deepEqual(attachment.pages, []);
+  }
 });
 
 test('PDFium renders real PDF page pixels with page orientation and bounded dimensions', async () => {

@@ -54,6 +54,28 @@ test('browser pipeline rereads legacy coverage, binds image hashes, follows regr
   assert.deepEqual(savedRevisions, [13, 14, 15, 16, 17, 18, 19]); assert.equal(result.processed, 7); assert.equal(result.added, 7); assert.equal(rasters.closes, 1);
 });
 
+test('Word sections use the text AI path without rendering or uploading images', async () => {
+  const word: ShipmentDocument = {
+    ...source(2), name: 'invoice.doc', mime: 'application/msword', extractionPipeline: 'kimi', extractionStatus: 'pending_ai',
+    pages: [{ page: 1, text: 'Invoice number: TEST-DOC-2026', textSource: 'office' }, { page: 2, text: 'Total: USD 1,234.50', textSource: 'office' }],
+  };
+  const current = workspace(word); const calls: string[] = [];
+  const result = await runDocumentAi({ workspace: current, documentId: word.id, status: { ...status, visionSupported: false } }, {
+    renderer: async () => { throw new Error('Word text must not start a visual renderer.'); },
+    fetch: async (url, init) => {
+      calls.push(url);
+      assert.equal(url, '/api/ai/extract');
+      const body = JSON.parse(String(init?.body));
+      assert.deepEqual(body.pages, [1, 2]);
+      assert.equal(body.visionPages, undefined);
+      assert.equal(body.text, undefined, 'The server reads its own saved text rather than a browser text claim.');
+      return Response.json({ ...current, ai: { added: 0, rejected: 0, pages: body.pages } });
+    },
+  });
+  assert.deepEqual(calls, ['/api/ai/extract']);
+  assert.equal(result.processed, 2);
+});
+
 test('a rate-limited later batch preserves saved pages, closes the renderer, and resumes only the remainder', async () => {
   let current = workspace(source(4)); let extracts = 0; const firstRasters = rasterHarness();
   const request = async (url: string, init?: RequestInit) => {
