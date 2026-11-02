@@ -1,5 +1,6 @@
 import { Buffer } from 'node:buffer';
-import WordExtractor from 'word-extractor';
+import WordOleExtractor from 'word-extractor/lib/word-ole-extractor.js';
+import BufferReader from 'word-extractor/lib/buffer-reader.js';
 import type { SourcePage } from './types.ts';
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
@@ -192,14 +193,6 @@ function validateWordTables(streams: Map<string, Buffer>) {
   const boundaries = [0x4c, 0x50, 0x54, 0x5c, 0x60, 0x64, 0x68].map(offset => word.readUInt32LE(offset));
   const characterCount = boundaries.reduce((total, value) => total + value, 0);
   requireLimit(characterCount <= MAX_TEXT);
-  const fieldBoundaries = new Set<number>();
-  let storyEnd = 0;
-  for (const [index, length] of boundaries.entries()) {
-    storyEnd += length;
-    fieldBoundaries.add(storyEnd);
-    // The extractor removes the last character from non-body stories.
-    if (index > 0 && length) fieldBoundaries.add(storyEnd - 1);
-  }
   const headers = fibRange(0xf2);
   requireValid(headers.length % 4 === 0);
   requireValid(boundaries[2] === 0 || headers.length >= 8);
@@ -209,7 +202,6 @@ function validateWordTables(streams: Map<string, Buffer>) {
     const cp = headers.readUInt32LE(offset);
     requireValid(cp >= previousHeader && cp <= boundaries[2]);
     previousHeader = cp;
-    fieldBoundaries.add(boundaries[0] + boundaries[1] + cp);
   }
   const clx = fibRange(0x1a2);
   let pos = 0;
@@ -225,10 +217,6 @@ function validateWordTables(streams: Map<string, Buffer>) {
   requireLimit(pieces <= 2000);
   requireValid(pieces > 0 && clx.readUInt32LE(pos) === 0);
   let textLength = 0;
-  let fieldDepth = 0;
-  let fieldCount = 0;
-  let fieldSeparator = false;
-  let characterPosition = 0;
   for (let i = 0; i < pieces; i++) {
     const start = clx.readUInt32LE(pos + i * 4);
     const end = clx.readUInt32LE(pos + (i + 1) * 4);
@@ -241,21 +229,13 @@ function validateWordTables(streams: Map<string, Buffer>) {
     const fileOffset = compressed ? (filePosition & 0x3fffffff) / 2 : filePosition;
     requireValid(Number.isInteger(fileOffset));
     const data = range(fileOffset, (end - start) * (compressed ? 1 : 2), word);
-    // A narrow field grammar avoids pathological backtracking in the upstream cleaner.
     for (let j = 0; j < data.length; j += compressed ? 1 : 2) {
       const char = compressed ? data[j] : data.readUInt16LE(j);
       if (char === 0x1f || (compressed && [0x80, 0x81, 0x8d, 0x8f, 0x90, 0x9d].includes(char))) {
         throw new WordDocumentError('unsupported', 'This Word document uses a legacy character encoding that cannot be extracted reliably.');
       }
-      if (char === 0x13) { requireLimit(fieldDepth === 0); fieldDepth = 1; fieldCount++; fieldSeparator = false; }
-      if (char === 0x14) { requireValid(fieldDepth === 1 && !fieldSeparator); fieldSeparator = true; }
-      if (char === 0x15) { requireValid(fieldDepth === 1); fieldDepth = 0; }
-      requireLimit(fieldCount <= 5000);
-      characterPosition++;
-      if (fieldBoundaries.has(characterPosition)) requireValid(fieldDepth === 0);
     }
   }
-  requireValid(fieldDepth === 0);
   requireValid(characterCount <= textLength);
   // Bookmarks and headers drive loops in the parser; their buffers must be real.
   for (const offset of [0x142, 0x14a, 0x152]) fibRange(offset);
@@ -265,9 +245,6 @@ function validateWordTables(streams: Map<string, Buffer>) {
     if (!properties.length) continue;
     requireValid(properties.length >= 4 && (properties.length - 4) % 8 === 0);
     const blocks = (properties.length - 4) / 8;
-    // Formatting may delete field delimiters after validation, exposing the upstream
-    // cleaner to an unterminated field. Keep that combination out of this parser.
-    if (fieldCount && blocks) throw new WordDocumentError('unsupported', 'This Word document combines dynamic fields with formatting that cannot be extracted reliably.');
     requireLimit(blocks <= 2000);
     for (let i = 0; i < blocks; i++) {
       const block = range(properties.readUInt32LE((blocks + 1) * 4 + i * 4) * 512, 512, word);
@@ -275,6 +252,7 @@ function validateWordTables(streams: Map<string, Buffer>) {
       requireValid((count + 1) * 4 + count * (fibOffset === 0xfa ? 1 : 13) <= 511);
       formatRuns += count;
       requireLimit(formatRuns * Math.max(pieces, 1) <= 1_000_000);
+      requireLimit(formatRuns * textLength <= 50_000_000);
       let previous = 0;
       for (let j = 0; j <= count; j++) {
         const cp = block.readUInt32LE(j * 4);
@@ -282,6 +260,80 @@ function validateWordTables(streams: Map<string, Buffer>) {
         previous = cp;
       }
     }
+  }
+}
+
+/** Read cached field results in one pass, including nested fields, without evaluating instructions. */
+function cleanWordText(text: string): string {
+  requireLimit(text.length <= MAX_TEXT);
+  const fields: boolean[] = [];
+  const output: string[] = [];
+  let hiddenInstructions = 0;
+  let fieldCount = 0;
+  for (const character of text) {
+    const code = character.charCodeAt(0);
+    if (code === 0x13) {
+      fields.push(false);
+      hiddenInstructions++;
+      fieldCount++;
+      requireLimit(fields.length <= 32 && fieldCount <= 5000);
+    } else if (code === 0x14) {
+      requireValid(fields.length > 0 && fields[fields.length - 1] === false);
+      fields[fields.length - 1] = true;
+      hiddenInstructions--;
+    } else if (code === 0x15) {
+      requireValid(fields.length > 0);
+      if (!fields.pop()) hiddenInstructions--;
+    } else if (!hiddenInstructions) {
+      if (code === 0x07) output.push('\t');
+      else if (code >= 0x0a && code <= 0x0d) output.push('\n');
+      else if (code === 0x1e) output.push('\u2011');
+      else if (code === 0x1f) output.push('\u00ad');
+      else if (code > 0x08) output.push(character);
+    }
+  }
+  // Formatting can delete delimiters. An incomplete field cannot provide reliable evidence.
+  requireValid(fields.length === 0);
+  return output.join('');
+}
+
+type WordTextParts = [string, string][];
+
+/**
+ * Pin word-extractor to 1.0.4: retain its binary parsing and tracked-deletion handling,
+ * but replace its regex-based final cleaner, which can backtrack on malformed fields.
+ * This per-instance override avoids mutating shared library state in concurrent requests.
+ */
+class SafeWordExtractor extends WordOleExtractor<WordTextParts> {
+  override buildDocument(): WordTextParts {
+    const raw = this._pieces.map(piece => piece.text).join('');
+    requireLimit(raw.length <= MAX_TEXT);
+    let offset = 0;
+    const story = (length: number, omitLast = true) => {
+      const start = offset;
+      offset += length;
+      requireValid(offset <= raw.length);
+      return length ? raw.slice(start, offset - (omitLast ? 1 : 0)) : '';
+    };
+    const body = story(this._boundaries.ccpText, false);
+    const footnotes = story(this._boundaries.ccpFtn);
+    story(this._boundaries.ccpHdd);
+    story(this._boundaries.ccpAtn); // Review comments are not shipment evidence.
+    const endnotes = story(this._boundaries.ccpEdn);
+    const textboxes = story(this._boundaries.ccpTxbx);
+    const headerTextboxes = story(this._boundaries.ccpHdrTxbx);
+    const headerText = (type: 'headers' | 'footers') => this._taggedHeaders
+      .filter(header => header.type === type)
+      .map(header => cleanWordText(header.text))
+      .join('\n');
+    return [
+      ['Body', cleanWordText(body)],
+      ['Headers', headerText('headers')],
+      ['Footers', headerText('footers')],
+      ['Footnotes', cleanWordText(footnotes)],
+      ['Endnotes', cleanWordText(endnotes)],
+      ['Text boxes', [cleanWordText(textboxes), cleanWordText(headerTextboxes)].join('\n')],
+    ];
   }
 }
 
@@ -293,16 +345,7 @@ export async function extractWordDocument(bytes: Uint8Array): Promise<WordDocume
     requireLimit(bytes.byteLength <= MAX_FILE_BYTES);
     const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     validateWordTables(checkedStreams(buffer));
-    const document = await new WordExtractor().extract(buffer);
-    const options = { filterUnicode: false };
-    const parts = [
-      ['Body', document.getBody(options)],
-      ['Headers', document.getHeaders({ ...options, includeFooters: false })],
-      ['Footers', document.getFooters(options)],
-      ['Footnotes', document.getFootnotes(options)],
-      ['Endnotes', document.getEndnotes(options)],
-      ['Text boxes', document.getTextboxes(options)],
-    ];
+    const parts = await new SafeWordExtractor().extract(new BufferReader(buffer));
     const pages: SourcePage[] = [];
     let total = 0;
     for (const [part, raw] of parts) {

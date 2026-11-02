@@ -34,6 +34,9 @@ export type EmailDraft = { id: string; caseId: string; issueIds: string[]; recip
 export type WorkspaceState = { caseSequence?: number; clientMemories?: ClientMemory[]; emailDrafts?: EmailDraft[]; id: string; name: string; revision: number; cases: ShipmentCase[]; documents: ShipmentDocument[]; candidates: Candidate[]; audit: AuditEntry[]; emails: EmailRecord[]; snapshots: Snapshot[]; handoffs: HandoffRun[]; settings: { inboxProvider: 'gmail'; inboxAddress: string; inboxStatus: 'not_connected'; defaultReviewer: string }; };
 export type Actor = { id: string; name: string; email: string };
 export type UploadedDocument = DocumentProvenance & { extractionPipeline?: 'kimi'; aiPageReadings?: AiPageReading[]; aiProcessedPages?: number[]; aiCandidates?: Candidate[]; aiStatus?: AiIntakeStatus; aiError?: string; id: string; name: string; mime: string; size: number; sha256: string; blobKey?: string; pages: SourcePage[]; extractionStatus: ShipmentDocument['extractionStatus']; extractionError?: string; sourceEmailId?: string; synthetic?: boolean };
+export type PreparedWordSource = { pages: SourcePage[]; extractionStatus: 'pending_ai' | 'unsupported' | 'failed'; extractionError?: string };
+/** Trusted server preparation only; never accepted by the public mutation schema. */
+export type PreparedExistingDocument = PreparedWordSource & { documentId: string; documentVersion: number; sha256: string };
 export type AiSourceProposal = { /** Optional only for older provider responses. */ confidenceScore?: number; readability?: 'clear' | 'uncertain'; evidence?: 'text' | 'vision'; bounds?: [number, number, number, number]; rowIndex?: number; field: string; value: string; quote: string; page: number; confidence: Confidence };
 export type Action =
  | ClientMemoryAction
@@ -52,7 +55,7 @@ export type Action =
  | { type: 'seed_demo' }
  | { type: 'create_case'; title: string; caseType?: ShipmentCase['caseType'] }
  | { type: 'delete_case'; caseId: string; confirmed: true }
- | { type: 'intake'; sourceCollection?: SourceCollection; documents: UploadedDocument[]; targetCaseId?: string; email?: EmailRecord; emails?: EmailRecord[] }
+ | { type: 'intake'; sourceCollection?: SourceCollection; documents: UploadedDocument[]; preparedExisting?: PreparedExistingDocument[]; targetCaseId?: string; email?: EmailRecord; emails?: EmailRecord[] }
  | { type: 'review_field'; caseId: string; field: string; value: string; candidateId?: string; reason: string }
  | { type: 'review_goods'; caseId: string; goods: GoodsLine[]; reviewedLineIds?: string[]; reason: string }
  | { type: 'resolve_issue'; caseId: string; issueId: string; reason: string }

@@ -1575,6 +1575,19 @@ h3 {
   background: #fff;
   box-shadow: 0 1px 5px #26351d1a;
 }
+.source-preparation-status {
+  margin: 12px 16px;
+  padding: 12px;
+  border: 1px solid #e4d6a2;
+  border-radius: 6px;
+  background: #fffaf0;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.source-preparation-status p {
+  margin: 0 0 10px;
+}
 .data-panel {
   min-width: 0;
   align-self: stretch;
@@ -6351,6 +6364,9 @@ html[lang="en"] .report-fields dt {
 }
 .standalone-documents .source-ai-tools {
   grid-area: ai;
+}
+.standalone-documents .source-preparation-status {
+  grid-area: trace;
 }
 .standalone-documents .source-panel > .search-field {
   grid-area: search;

@@ -4,6 +4,8 @@ import { assessPageRejections } from '@/lib/source-completeness';
 import { DOCUMENT_LABELS } from "@/lib/engine";
 import { useLocale } from "@/lib/i18n";
 import { translateSystemText } from "@/lib/i18n-core";
+import { fetchWithSession } from '@/lib/auth-client';
+import { canRetryWordDocument } from '@/lib/word-retry';
 import type {
   Action,
   DocumentType,
@@ -71,6 +73,7 @@ export function ShipmentDocuments({
     caseId: current.id,
     query: "",
   });
+  const [retryError, setRetryError] = React.useState<{ documentId: string; message: string }>();
   const documentQuery =
     documentSearch.caseId === current.id ? documentSearch.query : "";
   const visibleDocuments = documents.filter((document) =>
@@ -91,6 +94,25 @@ export function ShipmentDocuments({
     source?.extractionStatus === "failed" || (!!source && !source.pages.length);
   const sourceBlocked = sourceFormatUnsupported || sourceCannotOpen;
   const blockingRejectedPages = source?.aiRejectedPages?.filter(page => assessPageRejections(state, source, page).blocking) ?? [];
+  const retryWord = async () => {
+    if (!source || busy) return;
+    setBusy(true);
+    setRetryError(undefined);
+    try {
+      const result = await fetchWithSession(`/api/documents/${encodeURIComponent(source.id)}/retry-word`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ revision: state.revision }),
+      });
+      const body = await result.json() as WorkspaceResponse & { error?: string };
+      if (result.status === 409 && body.state) onConflict(body);
+      if (!result.ok) throw new Error(body.error || 'The saved Word document could not be read. Please retry.');
+      onApplied(body, locale === 'vi' ? 'Đã kiểm tra lại tệp Word gốc đã lưu.' : 'The saved Word original has been checked again.');
+      setPage(1);
+    } catch (error) {
+      setRetryError({ documentId: source.id, message: error instanceof Error ? error.message : 'The saved Word document could not be read. Please retry.' });
+    } finally { setBusy(false); }
+  };
   return (
     <aside className="source-panel">
       <div className="panel-heading">
@@ -220,6 +242,24 @@ export function ShipmentDocuments({
           </button>
         )}
       </div>
+      {source && sourceBlocked && (
+        <div className="source-preparation-status">
+          <p role="alert">{translateSystemText(source.extractionError || (locale === 'vi'
+            ? 'Chưa đọc được tệp này. Bạn vẫn có thể tải tệp gốc xuống.'
+            : 'This file has not been read. You can still download the original.'), locale)}</p>
+          {canRetryWordDocument(source) && (
+            <>
+              <p>{locale === 'vi'
+                ? 'Nếu đã tải tệp lên trước khi ứng dụng hỗ trợ Word, hãy thử đọc lại bản đã lưu.'
+                : 'If you uploaded this file before Word support was added, retry reading the saved original.'}</p>
+              <button className="button secondary small" disabled={busy || !editable || hasPendingDrafts} onClick={() => void retryWord()}>
+                {locale === 'vi' ? 'Thử đọc lại Word' : 'Retry Word reading'}
+              </button>
+              {retryError?.documentId === source.id && <p role="alert">{translateSystemText(retryError.message, locale)}</p>}
+            </>
+          )}
+        </div>
+      )}
       {source && !source.referenceOnly && !sourceBlocked && (
         <div className="source-ai-tools">
           {legacySource && (

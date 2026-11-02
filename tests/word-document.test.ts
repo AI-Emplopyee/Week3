@@ -4,6 +4,22 @@ import { test } from 'node:test';
 import { extractWordDocument, WordDocumentError } from '../lib/word-document.ts';
 import { wordFixture } from './helpers/word-document.ts';
 
+function withCharacterRun(body: string, start: number, end: number, deleted: boolean) {
+  const fixture = wordFixture(body);
+  fixture.bytes.writeUInt32LE(64, fixture.wordOffset + 0xfa);
+  fixture.bytes.writeUInt32LE(12, fixture.wordOffset + 0xfe);
+  fixture.bytes.writeUInt32LE(7, fixture.tableOffset + 72);
+  const format = fixture.wordOffset + 7 * 512;
+  fixture.bytes.writeUInt32LE(512 + start * 2, format);
+  fixture.bytes.writeUInt32LE(512 + end * 2, format + 4);
+  fixture.bytes[format + 8] = 10;
+  fixture.bytes[format + 20] = 3;
+  fixture.bytes.writeUInt16LE(0x0800, format + 21);
+  fixture.bytes[format + 23] = Number(deleted);
+  fixture.bytes[format + 511] = 1;
+  return fixture;
+}
+
 test('real synthetic Word file preserves Vietnamese, table tabs and labels text sections honestly', async () => {
   const bytes = await readFile(new URL('./fixtures/word/synthetic-invoice.doc', import.meta.url));
   const result = await extractWordDocument(bytes);
@@ -91,8 +107,8 @@ test('known unsupported legacy characters are rejected rather than silently turn
   assert.equal(result.pages[0].text, 'Total: €100');
 });
 
-test('malformed, nested and cross-story fields cannot reach the upstream field cleaner', async () => {
-  for (const body of ['\x13unterminated', '\x13outer\x13inner\x15\x15', '\x13code\x14one\x14two\x15']) {
+test('malformed and cross-story fields never produce guessed text', async () => {
+  for (const body of ['\x13unterminated', 'stray\x15', '\x13code\x14one\x14two\x15']) {
     await assert.rejects(extractWordDocument(wordFixture(body).bytes), WordDocumentError);
   }
   const crossStory = wordFixture('\x13body\x15\r');
@@ -103,22 +119,45 @@ test('malformed, nested and cross-story fields cannot reach the upstream field c
   assert.match(valid.pages[0].text, /2026-11-01/);
 });
 
-test('formatting cannot remove a checked field delimiter and expose the upstream cleaner', async () => {
+test('formatted dynamic fields preserve cached displayed values without exposing field instructions', async () => {
+  const body = 'Invoice date: \x13DATE \\@ "yyyy-MM-dd"\x142026-11-01\x15\r';
+  const fixture = withCharacterRun(body, 0, body.length - 1, false);
+  const result = await extractWordDocument(fixture.bytes);
+  assert.equal(result.pages[0].text, 'Invoice date: 2026-11-01');
+});
+
+test('nested fields keep displayed results and hide instructions at every level', async () => {
+  const examples = [
+    ['Result: \x13IF \x13MERGEFIELD Code\x14hidden input\x15\x14approved\x15\r', 'Result: approved'],
+    ['Result: \x13IF condition\x14total \x13AMOUNT\x14123.00\x15 USD\x15\r', 'Result: total 123.00 USD'],
+    ['Text \x13PRIVATE command\x15continues\r', 'Text continues'],
+  ];
+  for (const [body, expected] of examples) {
+    const result = await extractWordDocument(wordFixture(body).bytes);
+    assert.equal(result.pages[0].text, expected);
+  }
+});
+
+test('large nested and unterminated fields use bounded linear cleanup', async () => {
+  const prefix = 'a'.repeat(150_000);
+  const valid = await extractWordDocument(wordFixture(`Result: \x13${prefix}\x13INNER\x14ignored\x15\x14visible\x15\r`).bytes);
+  assert.equal(valid.pages[0].text, 'Result: visible');
+  await assert.rejects(extractWordDocument(wordFixture(`\x13${prefix}`).bytes), (error: unknown) => error instanceof WordDocumentError && error.code === 'malformed');
+});
+
+test('tracked deletions remain absent while formatted field results stay readable', async () => {
+  const body = 'Amount: OLD VALUE\x13AMOUNT\x14100.00\x15 USD\r';
+  const start = body.indexOf('OLD VALUE');
+  const fixture = withCharacterRun(body, start, start + 'OLD VALUE'.length, true);
+  const result = await extractWordDocument(fixture.bytes);
+  assert.equal(result.pages[0].text, 'Amount: 100.00 USD');
+});
+
+test('formatting that deletes a field delimiter fails safely after formatting', async () => {
   const body = `\x13${'a'.repeat(1000)}\x14x\x15\r`;
-  const fixture = wordFixture(body);
-  fixture.bytes.writeUInt32LE(64, fixture.wordOffset + 0xfa);
-  fixture.bytes.writeUInt32LE(12, fixture.wordOffset + 0xfe);
-  fixture.bytes.writeUInt32LE(7, fixture.tableOffset + 72);
-  const format = fixture.wordOffset + 7 * 512;
-  const closingPosition = 512 + body.lastIndexOf('\x15') * 2;
-  fixture.bytes.writeUInt32LE(closingPosition, format);
-  fixture.bytes.writeUInt32LE(closingPosition + 2, format + 4);
-  fixture.bytes[format + 8] = 10;
-  fixture.bytes[format + 20] = 3;
-  fixture.bytes.writeUInt16LE(0x0800, format + 21);
-  fixture.bytes[format + 23] = 1;
-  fixture.bytes[format + 511] = 1;
-  await assert.rejects(extractWordDocument(fixture.bytes), (error: unknown) => error instanceof WordDocumentError && error.code === 'unsupported');
+  const closingPosition = body.lastIndexOf('\x15');
+  const fixture = withCharacterRun(body, closingPosition, closingPosition + 1, true);
+  await assert.rejects(extractWordDocument(fixture.bytes), (error: unknown) => error instanceof WordDocumentError && error.code === 'malformed');
 });
 
 test('hostile allocation sizes, text counts and field nesting are bounded', async () => {

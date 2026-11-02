@@ -7,11 +7,12 @@ import { matchEmailsInContext } from '@/lib/server-email-grouping';
 import { isVisualDocument } from '@/lib/vision';
 import { kimiStatus } from '@/lib/kimi';
 import { enrichIntakeWithKimi } from '@/lib/intake-ai';
-import { extractWordDocument, WordDocumentError } from '@/lib/word-document';
+import { canRetryWordDocument } from './word-retry.ts';
+import { prepareWordSource } from './word-source.ts';
 import { parseIntakeMetadata, sourceCollectionSchema, type IntakeMetadata } from '@/lib/intake-metadata';
 import { ApiError, bucket, expectRevision, json, mutate, readLimitedBytes, requireSameOrigin, response, workspace } from '@/lib/server';
 import { acceptedFile, MAX_UPLOAD_BYTES, parseId, parseUploadedPages, parseRevision, safeFilename } from '@/lib/server-validation';
-import type { EmailRecord, SourcePage, UploadedDocument } from '@/lib/types';
+import type { EmailRecord, PreparedExistingDocument, SourcePage, UploadedDocument } from '@/lib/types';
 
 async function hash(bytes: Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new Uint8Array(bytes).buffer);
@@ -67,16 +68,7 @@ async function prepareSource(bytes: Uint8Array, extension: string, metadata?: In
   if (extension === 'doc') {
     // Word text is derived only from the saved original, never browser metadata.
     // A conversion failure preserves the original and the rest of a mixed batch.
-    try {
-      const { pages } = await extractWordDocument(bytes);
-      return { pages, extractionStatus: 'pending_ai' };
-    } catch (error) {
-      return {
-        pages: [],
-        extractionStatus: error instanceof WordDocumentError && error.code === 'unsupported' ? 'unsupported' : 'failed',
-        extractionError: error instanceof WordDocumentError ? error.message : 'This Word document could not be read automatically. Open the original in Word or LibreOffice, save it as PDF, and upload the PDF.',
-      };
-    }
+    return prepareWordSource(bytes);
   }
   const pages = await readPages(bytes, extension, metadata);
   return { pages, ...pendingExtraction(extension, pages) };
@@ -114,6 +106,7 @@ export async function upload(request: Request): Promise<Response> {
   const documents: UploadedDocument[] = [];
   const emails: EmailRecord[] = [];
   const skippedOriginals = new Map<string, { name: string; caseId: string }>();
+  const preparedExisting = new Map<string, PreparedExistingDocument>();
   const storedKeys: string[] = [];
   const storage = bucket();
   const writeOriginal = async (id: string, data: Uint8Array, mime: string) => {
@@ -130,6 +123,16 @@ export async function upload(request: Request): Promise<Response> {
     const shipment = context.state.cases.find(item => item.id === document.caseId);
     return `${document.name} (${shipment ? `${shipment.reference} — ${shipment.title}` : document.caseId})`;
   }).join('; ')}` : undefined;
+  const retryDuplicate = async (duplicate: UploadedDocument, bytes: Uint8Array, extension: string) => {
+    const existing = context.state.documents.find(document => document.id === duplicate.id);
+    if (extension !== 'doc' || !existing || !canRetryWordDocument(existing) || documentId && documentId !== existing.id) return;
+    const shipment = context.state.cases.find(item => item.id === existing.caseId);
+    if (!shipment || shipment.mergedInto || shipment.status === 'completed') throw new ApiError(422, 'Reopen the original case before retrying Word reading.');
+    if (context.state.candidates.some(candidate => candidate.documentId === existing.id && candidate.documentVersion === existing.version)) throw new ApiError(422, 'This Word document already has extraction results.');
+    if (!preparedExisting.has(existing.id)) preparedExisting.set(existing.id, { documentId: existing.id, documentVersion: existing.version, sha256: existing.sha256, ...await prepareWordSource(bytes) });
+    skippedOriginals.delete(existing.id);
+  };
+  const retryNotice = () => preparedExisting.size ? 'Existing Word originals were read again in their current cases. Check their text preview or conversion message.' : undefined;
   let committed = false;
   try {
     for (const [index, file] of files.entries()) {
@@ -140,6 +143,7 @@ export async function upload(request: Request): Promise<Response> {
       if (extension !== 'eml') {
         const duplicate = findDuplicate(sha256);
         if (duplicate) {
+          await retryDuplicate(duplicate, bytes, extension);
           const incoming = metadata[index].sourcePaths ?? [];
           const combined = [...new Set([...(duplicate.sourcePaths ?? []), ...incoming])].slice(0, 100);
           if (combined.length !== (duplicate.sourcePaths?.length ?? 0)) {
@@ -172,7 +176,10 @@ export async function upload(request: Request): Promise<Response> {
         const attachmentName = safeFilename(attachment.filename || 'unnamed-attachment');
         const data = typeof attachment.content === 'string' ? new TextEncoder().encode(attachment.content) : new Uint8Array(attachment.content);
         const attachmentHash = await hash(data); const duplicate = findDuplicate(attachmentHash);
-        if (duplicate) { email.documentIds.push(duplicate.id); continue; }
+        if (duplicate) {
+          await retryDuplicate(duplicate, data, attachmentName.toLowerCase().split('.').at(-1) || '');
+          email.documentIds.push(duplicate.id); continue;
+        }
         const id = `doc_${crypto.randomUUID()}`;
         let attachmentMime = attachment.mimeType || 'application/octet-stream';
         let prepared: Pick<UploadedDocument, 'pages' | 'extractionStatus' | 'extractionError'>;
@@ -188,7 +195,7 @@ export async function upload(request: Request): Promise<Response> {
       }
       emails.push(email);
     }
-    if (!documents.length && !emails.length) return json({ ...response(context), notice: duplicateNotice() ?? 'These original documents are already in the workspace. No duplicates were created.' });
+    if (!documents.length && !emails.length && !preparedExisting.size) return json({ ...response(context), notice: duplicateNotice() ?? 'These original documents are already in the workspace. No duplicates were created.' });
     // PDF/image vision runs after originals are committed and grouped. Do not pay
     // for a separate text-only pass that cannot see tables or OCR errors.
     const aiConfigured = kimiStatus(documentAiConfiguration(env)).configured;
@@ -199,7 +206,7 @@ export async function upload(request: Request): Promise<Response> {
     if (env.AICD_AUTH_MODE !== 'local') await enrichIntakeWithKimi(documents.filter(document => !isVisualDocument(document) && document.extractionStatus === 'pending_ai' && !document.referenceOnly && !context.state.documents.some(existing => existing.sha256 === document.sha256)), documentAiConfiguration(env), {
       allowRequest: () => consumeRateLimit(context.db, `kimi-extract:${context.state.id}`, 6, 60),
     });
-    const result = await mutate(context, revision, documentId ? { type: 'replace_document', documentId, document: documents[0] } : { type: 'intake', documents, targetCaseId, sourceCollection, emails });
+    const result = await mutate(context, revision, documentId && !preparedExisting.size ? { type: 'replace_document', documentId, document: documents[0] } : { type: 'intake', documents, preparedExisting: [...preparedExisting.values()], targetCaseId, sourceCollection, emails });
     committed = true;
     if (emails.length && aiConfigured && env.AICD_AUTH_MODE !== 'local') {
       try { return json(await matchEmailsInContext(context, emails.map(email => email.id))); }
@@ -214,7 +221,8 @@ export async function upload(request: Request): Promise<Response> {
         catch { return json({ ...response(context), notice: reason }); }
       }
     }
-    return json({ ...result, ...(duplicateNotice() ? { notice: duplicateNotice() } : {}) });
+    const notice = [retryNotice(), duplicateNotice()].filter(Boolean).join(' ');
+    return json({ ...result, ...(notice ? { notice } : {}) });
   } catch (error) {
     if (!committed && storedKeys.length) await storage.delete(storedKeys).catch(() => undefined);
     throw error;

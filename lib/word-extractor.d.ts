@@ -1,15 +1,18 @@
-declare module 'word-extractor' {
-  type TextOptions = { filterUnicode?: boolean; includeFooters?: boolean; includeBody?: boolean; includeHeadersAndFooters?: boolean };
-  interface WordText {
-    getBody(options?: TextOptions): string;
-    getHeaders(options?: TextOptions): string;
-    getFooters(options?: TextOptions): string;
-    getFootnotes(options?: TextOptions): string;
-    getEndnotes(options?: TextOptions): string;
-    getAnnotations(options?: TextOptions): string;
-    getTextboxes(options?: TextOptions): string;
+// Internal extension points of the pinned word-extractor 1.0.4 dependency.
+declare module 'word-extractor/lib/buffer-reader.js' {
+  export default class BufferReader {
+    constructor(buffer: import('node:buffer').Buffer);
+    read(buffer: import('node:buffer').Buffer, offset: number, length: number, position: number): Promise<import('node:buffer').Buffer>;
   }
-  export default class WordExtractor {
-    extract(source: import('node:buffer').Buffer): Promise<WordText>;
+}
+
+declare module 'word-extractor/lib/word-ole-extractor.js' {
+  import type BufferReader from 'word-extractor/lib/buffer-reader.js';
+  export default class WordOleExtractor<Result> {
+    protected _pieces: { text: string }[];
+    protected _boundaries: Record<'ccpText' | 'ccpFtn' | 'ccpHdd' | 'ccpAtn' | 'ccpEdn' | 'ccpTxbx' | 'ccpHdrTxbx', number>;
+    protected _taggedHeaders: { type: string; text: string }[];
+    buildDocument(): Result;
+    extract(reader: BufferReader): Promise<Result>;
   }
 }

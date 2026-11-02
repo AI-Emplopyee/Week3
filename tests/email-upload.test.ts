@@ -7,6 +7,7 @@ import PostalMime from 'postal-mime';
 import { PDFDocument } from 'pdf-lib';
 import { applyAction, createEmptyWorkspace } from '../lib/engine.ts';
 import { automaticDocuments } from '../lib/ai-processing-queue.ts';
+import { parseMutation } from '../lib/server-validation.ts';
 import type { Action, WorkspaceState } from '../lib/types.ts';
 const actor = { id: 'upload-test', name: 'Test reviewer', email: 'reviewer@example.invalid' };
 const fixtureKey = Symbol.for('aicd.tests.emailUpload');
@@ -17,10 +18,11 @@ const serverStub = stub(`
   const fixture = () => globalThis[Symbol.for('aicd.tests.emailUpload')];
   export class ApiError extends Error { constructor(status, message) { super(message); this.status = status; } }
   export const workspace = async () => fixture().context;
-  export const bucket = () => ({ put: async (key, bytes) => fixture().originals.set(key, new Uint8Array(bytes)), delete: async keys => { for (const key of [].concat(keys)) fixture().originals.delete(key); } });
+  export const bucket = () => ({ get: async key => { const bytes=fixture().originals.get(key); return bytes ? {size:bytes.length,arrayBuffer:async()=>new Uint8Array(bytes).buffer} : null; }, put: async (key, bytes) => fixture().originals.set(key, new Uint8Array(bytes)), delete: async keys => { for (const key of [].concat(keys)) fixture().originals.delete(key); } });
   export const expectRevision = (context, revision) => { if (context.state.revision !== revision) throw new ApiError(409, 'Revision conflict'); };
   export const requireSameOrigin = () => {};
   export const readLimitedBytes = async (request, limit) => { const bytes = new Uint8Array(await request.arrayBuffer()); if (bytes.length > limit) throw new ApiError(413, 'Too large'); return bytes; };
+  export const readJson = request => request.json();
   export const json = value => Response.json(value);
   export const response = context => ({ state: context.state });
   export const mutate = async (context, revision, action) => { expectRevision(context, revision); return fixture().apply(action); };
@@ -31,7 +33,7 @@ register(stub(`
   let settings;
   export function initialize(data) { settings = data; }
   export async function resolve(specifier, context, next) {
-    if (context.parentURL !== settings.serverUploadUrl) return next(specifier, context);
+    if (![settings.serverUploadUrl, settings.serverRetryUrl].includes(context.parentURL)) return next(specifier, context);
     if (settings.stubs[specifier]) return { url: settings.stubs[specifier], shortCircuit: true };
     if (specifier.startsWith('@/')) return next(new URL(specifier.slice(2) + '.ts', settings.projectUrl).href, context);
     return next(specifier, context);
@@ -40,6 +42,7 @@ register(stub(`
   parentURL: import.meta.url,
   data: {
     serverUploadUrl: new URL('../lib/server-upload.ts', import.meta.url).href,
+    serverRetryUrl: new URL('../lib/server-word-retry.ts', import.meta.url).href,
     projectUrl: new URL('../', import.meta.url).href,
     stubs: {
       'cloudflare:workers': stub('export const env = {};'),
@@ -50,6 +53,7 @@ register(stub(`
   },
 });
 const { upload } = await import('../lib/server-upload.ts');
+const { retryWordDocument } = await import('../lib/server-word-retry.ts');
 function reset(state = createEmptyWorkspace('upload-tests')) {
   const fixture: Fixture = { context: { state }, originals: new Map(), apply(action) { this.context.state = applyAction(this.context.state, action, actor); return { state: this.context.state }; } };
   globals[fixtureKey] = fixture; return fixture;
@@ -78,6 +82,96 @@ async function sendOriginals(files: { name: string; bytes: Uint8Array; mime?: st
 }
 const wordOriginal = new Uint8Array(await readFile(new URL('./fixtures/word/synthetic-invoice.doc', import.meta.url)));
 const plain = (body: string) => `From: sender@example.invalid\r\nSubject: Shipment follow-up\r\nMessage-ID: <reply-1@example.invalid>\r\nIn-Reply-To: <first@example.invalid>\r\nReferences: <first@example.invalid>\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n${body}`;
+
+async function oldWordUpload() {
+  const fixture = reset();
+  await sendOriginals([{ name: 'saved.doc', bytes: wordOriginal }]);
+  const document = fixture.context.state.documents[0];
+  document.pages = []; document.extractionStatus = 'unsupported';
+  document.extractionError = 'Original preserved. Convert this format to PDF or a supported image for AI extraction.';
+  delete document.aiStatus;
+  document.type = 'invoice'; document.classificationConfirmed = true;
+  return { fixture, document };
+}
+function retryRequest(revision = globals[fixtureKey]!.context.state.revision) {
+  return new Request('https://aicd.invalid/api/documents/saved/retry-word', { method: 'POST', headers: { origin: 'https://aicd.invalid', 'content-type': 'application/json' }, body: JSON.stringify({ revision }) });
+}
+
+test('identical Word reupload and replacement repair old unsupported records in place', async () => {
+  for (const replacement of [false, true]) {
+    const { fixture, document } = await oldWordUpload();
+    const before = structuredClone(document);
+    const originals = fixture.originals.size;
+    const result = await sendOriginals([{ name: 'saved.doc', bytes: wordOriginal }], replacement ? { documentId: document.id } : { targetCaseId: document.caseId });
+    assert.equal(result.status, 200);
+    const updated = fixture.context.state.documents[0];
+    for (const key of ['id', 'version', 'sha256', 'blobKey', 'caseId', 'uploadedAt', 'type', 'classificationConfirmed'] as const) assert.equal(updated[key], before[key]);
+    assert.equal(updated.extractionStatus, 'pending_ai');
+    assert.match(updated.pages[0].text, /TEST-DOC-2026/);
+    assert.equal(fixture.context.state.documents.length, 1);
+    assert.equal(fixture.originals.size, originals);
+    assert.equal(automaticDocuments(fixture.context.state).length, 1);
+    assert.ok(fixture.context.state.audit.some(entry => entry.action === 'word_original_reprepared'));
+  }
+});
+
+test('mixed retry leaves the existing Word original in its case and commits new documents to the target', async () => {
+  const { fixture, document } = await oldWordUpload();
+  fixture.context.state = applyAction(fixture.context.state, { type: 'create_case', title: 'Other target' }, actor);
+  const target = fixture.context.state.cases[1].id;
+  await sendOriginals([{ name: 'saved.doc', bytes: wordOriginal }, { name: 'new.txt', bytes: new TextEncoder().encode('New unrelated source') }], { targetCaseId: target });
+  const updated = fixture.context.state.documents.find(source => source.id === document.id)!;
+  assert.equal(updated.caseId, document.caseId);
+  assert.equal(updated.extractionStatus, 'pending_ai');
+  assert.equal(fixture.context.state.documents.find(source => source.name === 'new.txt')!.caseId, target);
+  assert.equal(fixture.context.state.cases.length, 2);
+});
+
+test('saved Word retry verifies original bytes and preserves classification without requesting AI', async () => {
+  const { fixture, document } = await oldWordUpload();
+  const original = fixture.originals.get(document.blobKey!);
+  assert.equal((await retryWordDocument(retryRequest(), document.id)).status, 200);
+  const updated = fixture.context.state.documents[0];
+  assert.equal(updated.id, document.id); assert.equal(updated.version, document.version);
+  assert.equal(updated.type, 'invoice'); assert.equal(updated.classificationConfirmed, true);
+  assert.equal(updated.extractionStatus, 'pending_ai'); assert.match(updated.pages[0].text, /Công ty Thử nghiệm Việt Nam/);
+  assert.deepEqual(fixture.originals.get(document.blobKey!), original);
+  assert.deepEqual(fixture.context.state.candidates, []);
+  await assert.rejects(() => retryWordDocument(retryRequest(), document.id), /already has text/);
+  assert.throws(() => parseMutation({ revision: 0, action: { type: 'intake', documents: [], preparedExisting: [] } }));
+});
+
+test('saved Word retry rejects stale, changed, unavailable, completed and previously processed sources', async () => {
+  for (const problem of ['revision', 'hash', 'missing', 'completed', 'inactive', 'processed', 'candidate', 'wrong-workspace']) {
+    const { fixture, document } = await oldWordUpload();
+    if (problem === 'hash') fixture.originals.set(document.blobKey!, new Uint8Array([1, 2, 3]));
+    if (problem === 'missing') fixture.originals.delete(document.blobKey!);
+    if (problem === 'completed') fixture.context.state.cases[0].status = 'completed';
+    if (problem === 'inactive') document.active = false;
+    if (problem === 'processed') document.aiProcessedPages = [1];
+    if (problem === 'candidate') fixture.context.state.candidates.push({ id: 'old', documentId: document.id, documentVersion: document.version } as WorkspaceState['candidates'][number]);
+    if (problem === 'wrong-workspace') document.blobKey = 'other-workspace/saved.doc';
+    const before = JSON.stringify(fixture.context.state);
+    await assert.rejects(() => retryWordDocument(retryRequest(problem === 'revision' ? 99 : undefined), document.id), /revision|Revision|integrity|unavailable|Reopen|Active document|already has|workspace/);
+    assert.equal(JSON.stringify(fixture.context.state), before, problem);
+  }
+});
+
+test('Word retry preserves a new conversion failure and a later invalid upload rolls back the whole batch', async () => {
+  const { fixture, document } = await oldWordUpload();
+  const broken = new Uint8Array(wordOriginal.slice(0, 16));
+  document.sha256 = createHash('sha256').update(broken).digest('hex');
+  fixture.originals.set(document.blobKey!, broken);
+  assert.equal((await retryWordDocument(retryRequest(), document.id)).status, 200);
+  assert.equal(fixture.context.state.documents[0].extractionStatus, 'failed');
+  assert.match(fixture.context.state.documents[0].extractionError!, /PDF/);
+  assert.deepEqual(fixture.originals.get(document.blobKey!), broken);
+  const second = await oldWordUpload();
+  const before = JSON.stringify(second.fixture.context.state);
+  await assert.rejects(() => sendOriginals([{ name: 'saved.doc', bytes: wordOriginal }, { name: 'invalid.pdf', bytes: new Uint8Array([1, 2, 3]) }]), /PDF header/);
+  assert.equal(JSON.stringify(second.fixture.context.state), before);
+  assert.equal(second.fixture.originals.size, 1);
+});
 
 test('body-only email preserves exact EML and text without creating a document or provisional shipment', async () => {
   const fixture = reset(); const raw = plain('Please confirm HBL Number: HBL-123.');

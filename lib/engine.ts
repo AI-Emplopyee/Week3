@@ -1,6 +1,7 @@
 import { DEFAULT_DOCUMENT_MODEL, ZAI_ENDPOINT } from './ai-provider.ts';
 import { caseSequence, deleteCase } from './case-deletion.ts';
 import { documentSourceReady } from './source-completeness.ts';
+import { canRetryWordDocument } from './word-retry.ts';
 import { clientMemorySaveAction, dismissOrRevokeClientMemory, getClientIdentity, rememberClientCorrection } from './client-memory.ts';
 import { applyEmailGroupingAction } from './email-grouping.ts';
 import type {
@@ -1612,8 +1613,40 @@ export function applyAction(
       ...(action.emails ?? []),
       ...(action.email ? [action.email] : []),
     ];
-    if (!action.documents.length && !emails.length)
+    if (!action.documents.length && !emails.length && !action.preparedExisting?.length)
       throw new Error("Chưa chọn chứng từ để tải lên.");
+    // Only the upload/retry handlers may provide this field. Reopening the same
+    // original must not create a new version, move it, or replace reviewed facts.
+    const preparedIds = new Set<string>();
+    for (const prepared of action.preparedExisting ?? []) {
+      const document = findDocument(state, prepared.documentId);
+      const shipment = findCase(state, document.caseId);
+      assertReviewable(shipment);
+      if (preparedIds.has(document.id) || !canRetryWordDocument(document)
+        || document.version !== prepared.documentVersion || document.sha256 !== prepared.sha256
+        || state.candidates.some(candidate => candidate.documentId === document.id && candidate.documentVersion === document.version)) {
+        throw new Error('This Word original is no longer eligible for text preparation.');
+      }
+      preparedIds.add(document.id);
+      document.pages = structuredClone(prepared.pages);
+      document.extractionPipeline = 'kimi';
+      document.extractionStatus = prepared.extractionStatus;
+      document.aiProcessedPages = [];
+      document.aiRejectedPages = [];
+      delete document.aiError;
+      if (prepared.extractionStatus === 'pending_ai') {
+        document.aiStatus = 'partial';
+        document.extractionError = 'AI has not finished reading every page.';
+      } else {
+        delete document.aiStatus;
+        document.extractionError = prepared.extractionError;
+      }
+      shipment.updatedAt = now();
+      audit(state, actor, 'word_original_reprepared', 'Read the saved Word original again without creating a duplicate or changing its case.', {
+        caseId: document.caseId,
+        after: { documentId: document.id, documentVersion: document.version, sha256: document.sha256, extractionStatus: document.extractionStatus, sections: document.pages.length },
+      });
+    }
     const receivedEmails: typeof emails = [];
     const duplicateEmailIds = new Set<string>();
     for (const email of emails) {
